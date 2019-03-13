@@ -70,13 +70,16 @@ for i in range(30):
 
 
 
-plt.plot(np.log(tf_losses), color='green', ls='--')
-plt.plot(np.log(ag_losses), color='red', ls=':')
+plt.plot(ag_losses, color='blue', ls=':', linewidth=5.0, alpha=0.8, label='ag')
+plt.plot(tf_losses, color='red', ls='--', linewidth=5.0, alpha=0.4, label='tf')
+plt.yscale('log')
+plt.legend(loc='best')
 plt.show()
 
 
 
-print(out)
+# Solution is all ones
+session.run(tf_var)
 
 
 
