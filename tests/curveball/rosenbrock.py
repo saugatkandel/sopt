@@ -46,15 +46,17 @@ for i in range(30):
 # Tensorflow
 tf.reset_default_graph()
 tf_var = tf.Variable(z_init, dtype='float32')
-tf_x_fn = tf.identity(tf_var)
+tf_x_fn = lambda x: tf.identity(x)
+tf_x_fn_tensor = tf_x_fn(tf_var)
 
-tf_x_reshaped = tf.reshape(tf_x_fn, [2, -1])
-tf_rosenbrock = tf.reduce_sum(100*(tf_x_reshaped[1] - tf_x_reshaped[0]**2)**2 + (1 - tf_x_reshaped[0])**2)
+def tf_rosenbrock(x):
+    x_reshaped = tf.reshape(x, [2, -1])
+    return tf.reduce_sum(100*(x_reshaped[1] - x_reshaped[0]**2)**2 + (1 - x_reshaped[0])**2)
 
-cball_tf = Cat(input_var=tf_var, loss_fn_input=tf_x_fn, loss_fn_tensor=tf_rosenbrock, name='ros', squared_loss=False)
+tf_rosenbrock_tensor = tf_rosenbrock(tf_x_fn_tensor)
+
+cball_tf = Cat(tf_var, tf_x_fn, tf_rosenbrock, name='ros', squared_loss=False)
 minimizer = cball_tf.minimize()
-damping_update = cball_tf.damping_update()
-placeholder = cball_tf.loss_after_update_placeholder
 
 session = tf.Session()
 session.run(tf.global_variables_initializer())
@@ -64,12 +66,16 @@ session.run(tf.global_variables_initializer())
 tf_losses = []
 for i in range(30):
     session.run(minimizer)
-    lossval = session.run(tf_rosenbrock)
-    session.run(damping_update, feed_dict={placeholder:lossval})
+    lossval = session.run(tf_rosenbrock_tensor)
+    #session.run(damping_update, feed_dict={placeholder:lossval})
     tf_losses.append(lossval)
 
 
 
+# The discrepancy here is because curveball requires a matrix inversion step
+# the matrix becomes singular fairly often
+# I tried calculating the pseudo inverse myself, but all the approach I tried for this 
+# in tensorflow game solutions less stable and accurate than the numpy counterpart.
 plt.plot(ag_losses, color='blue', ls=':', linewidth=5.0, alpha=0.8, label='ag')
 plt.plot(tf_losses, color='red', ls='--', linewidth=5.0, alpha=0.4, label='tf')
 plt.yscale('log')

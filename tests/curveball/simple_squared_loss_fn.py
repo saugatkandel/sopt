@@ -55,7 +55,7 @@ ca2 = Cag(z_guess, y_pred, loss_fn, squared_loss=False)
 
 ag_losses1 = []
 ag_losses2 = []
-for i in range(100):
+for i in range(50):
     out1 = ca1.minimize()
     lossval = loss_fn(y_pred(out1))
     out2 = ca2.minimize()
@@ -85,17 +85,11 @@ preds2 = tf_y_pred(var2)
 loss_tensor1 = tf_loss(preds1)
 loss_tensor2 = tf_loss(preds2)
 
-ct1 = Cat(var1, preds1, loss_tensor1, name='opt1', squared_loss=False)
-ct2 = Cat(var2, preds2, loss_tensor2, name='opt2', squared_loss=False)
+ct1 = Cat(var1, tf_y_pred, tf_loss, name='opt1', squared_loss=True)
+ct2 = Cat(var2, tf_y_pred, tf_loss, name='opt2', squared_loss=False)
 
 ct1_min = ct1.minimize()
-ct1_placeholder = ct1.loss_after_update_placeholder
-ct1_damping_update = ct1.damping_update()
-
 ct2_min = ct2.minimize()
-ct2_placeholder = ct2.loss_after_update_placeholder
-ct2_damping_update = ct2.damping_update()
-
 
 session = tf.Session()
 session.run(tf.global_variables_initializer())
@@ -104,17 +98,19 @@ session.run(tf.global_variables_initializer())
 
 tf_losses1 = []
 tf_losses2 = []
-for i in range(100):
+for i in range(50):
     session.run([ct1_min, ct2_min])
     lossval1, lossval2 = session.run([loss_tensor1, loss_tensor2])
-    session.run([ct1_damping_update, ct2_damping_update],
-                feed_dict={ct1_placeholder: lossval1,
-                           ct2_placeholder: lossval2})
     tf_losses1.append(lossval1)
     tf_losses2.append(lossval2)
     
 
 
+
+# Any discrepancy here is because curveball requires a matrix inversion step
+# the matrix becomes singular fairly often
+# I tried calculating the pseudo inverse myself, but all the approach I tried for this 
+# in tensorflow game solutions less stable and accurate than the numpy counterpart.
 
 plt.plot(ag_losses1, color='blue', ls=':', linewidth=5.0, alpha=0.8, label='ag_sq_true')
 plt.plot(ag_losses2, color='green', ls='--', linewidth=5.0, alpha=0.4, label='ag_sq_false')
@@ -123,6 +119,10 @@ plt.plot(tf_losses2, color='orange', ls='--', linewidth=5.0, alpha=0.4, label='t
 plt.yscale('log')
 plt.legend(loc='best')
 plt.show()
+
+
+
+print(ag_losses1[:10], tf_losses2[:10])
 
 
 

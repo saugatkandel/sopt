@@ -10,10 +10,10 @@ setup(
     scripts=[],
     description='Some second order methods for phase retrieval',
     requires=[
-        "numpy (>=1.7)",
+        "numpy",
         "scipy",
         "matplotlib",
-        "Image",
         "tensorflow",
+        "autograd"
     ],
 )

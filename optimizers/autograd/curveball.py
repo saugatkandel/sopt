@@ -108,8 +108,12 @@ class Curveball(object):
         A = np.array([[a11, a12],[a12, a22]])
         b = np.array([b1, b2])
         
-        m_b = np.linalg.pinv(A) @ b
+        self.A = A
+        self.b = b
         
+        
+        m_b = np.linalg.pinv(A) @ b
+        self.m_b = m_b
         beta = m_b[0]
         rho = -m_b[1]
         
@@ -143,9 +147,10 @@ class Curveball(object):
     def minimize(self) -> np.ndarray:
         loss_before_update, M = self._matrix_vector_updates()
         
-        self._iteration += 1
+        self._expected_quadratic_change = M
+        
         if self._iteration % self._damping_update_frequency == 0:
             self._damping_update(loss_before_update, M)
-        
+        self._iteration += 1       
         return self._input_var
 
