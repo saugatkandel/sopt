@@ -4,6 +4,7 @@
 
 import numpy as np
 import tensorflow as tf
+from tensorflow.python.ops.gradients_impl import _hessian_vector_product
 from typing import Callable, Tuple
 
 
@@ -22,6 +23,10 @@ class Curveball(object):
                  damping_factor: float = 1.0, 
                  damping_update_factor: float = 0.999, 
                  damping_update_frequency: int = 5,
+                 update_cond_threshold_low: float = 0.5, 
+                 update_cond_threshold_high: float = 1.5,
+                 damping_threshold_low: float = 1e-7,
+                 damping_threshold_high: float = 1e7,
                  alpha_init: float = 1.0, 
                  squared_loss: bool = True) -> None:
         """The alpha should generally just be 1.0 and doesn't change. 
@@ -38,6 +43,10 @@ class Curveball(object):
         # Multiplicating factor to update the damping factor at the end of each cycle
         self._damping_update_factor = damping_update_factor
         self._damping_update_frequency = damping_update_frequency
+        self._update_cond_threshold_low = update_cond_threshold_low
+        self._update_cond_threshold_high =  update_cond_threshold_high
+        self._damping_threshold_low = damping_threshold_low
+        self._damping_threshold_high = damping_threshold_high
         self._squared_loss = squared_loss
         self._alpha = alpha_init
 
@@ -47,46 +56,50 @@ class Curveball(object):
 
             # Variable used for momentum-like updates
             self._z = tf.get_variable("z", dtype=tf.float32, 
-                                     initializer=tf.zeros_like(self._input_var))#(tf.shape(self._input_var)))
+                                     initializer=tf.zeros_like(self._input_var))
 
             self._dummy_var = tf.get_variable("dummy", dtype=tf.float32, 
                                              initializer=tf.zeros_like(self._predictions_fn_tensor))
 
             self._loss_before_update = tf.get_variable("loss_before_update", dtype=tf.float32,
-                                                     initializer=0.,
-                                                     trainable=False)
+                                                     initializer=0.)
             self._iteration = tf.get_variable("iteration", shape=[], dtype=tf.int64,
-                                             initializer=tf.zeros_initializer, 
-                                             trainable=False)
+                                             initializer=tf.zeros_initializer)
             self._expected_quadratic_change = tf.get_variable("expected_quadratic_change", 
                                                          dtype=tf.float32,
-                                                         initializer=0.,
-                                                         trainable=False)
+                                                         initializer=0.)
 
         # Set up the second order calculations
         self._second_order()
     
     def _second_order(self) -> None:
         with tf.name_scope(self._name + '_second_order'):
-            self._vjp = tf.gradients(self._predictions_fn_tensor, self._input_var, self._dummy_var, 
+            self._vjp = tf.gradients(self._predictions_fn_tensor, self._input_var, self._dummy_var,
                                      name='vjp')[0]
-            self._jvpz = tf.gradients(self._vjp, self._dummy_var, self._z,
+            self._jvpz = tf.gradients(self._vjp, self._dummy_var, tf.stop_gradient(self._z),
                                       name='jvpz')[0]
 
             if self._squared_loss:
                 self._hjvpz = self._jvpz
             else:
-                self._hjvpz = tf.gradients(tf.gradients(self._loss_fn_tensor, 
-                                                       self._predictions_fn_tensor)[0][None, :] 
-                                          @ self._jvpz[:,None], self._predictions_fn_tensor,
-                                          stop_gradients=self._jvpz)[0]
+                # I have commented out my implementation of the hessian-vector product. 
+                # Using the tensorflow implementation instead.
+                #self._hjvpz = tf.gradients(tf.gradients(self._loss_fn_tensor, 
+                #                                       self._predictions_fn_tensor)[0][None, :] 
+                #                          @ self._jvpz[:,None], self._predictions_fn_tensor,
+                #                          stop_gradients=self._jvpz)[0]
+                self._hjvpz = _hessian_vector_product(ys=[self._loss_fn_tensor],
+                                                      xs=[self._predictions_fn_tensor],
+                                                      v=[self._jvpz])[0]
 
             # Jacobian for the loss function wrt its inputs
-            self._jloss = tf.gradients(self._loss_fn_tensor, self._predictions_fn_tensor, name='jloss')[0]
+            self._jloss = tf.gradients(self._loss_fn_tensor, self._predictions_fn_tensor,
+                                       name='jloss')[0]
 
             # J^T H J z
-            self._jhjvpz = tf.gradients(self._predictions_fn_tensor, self._input_var, self._hjvpz + self._jloss, 
+            self._jhjvpz = tf.gradients(self._predictions_fn_tensor, self._input_var, self._hjvpz + self._jloss,
                                         name='jhjvpz')[0]
+            
             self._deltaz = self._jhjvpz + self._damping_factor * self._z    
     
     def _param_updates(self) -> Tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
@@ -94,15 +107,19 @@ class Curveball(object):
         with tf.name_scope(self._name + '_param_updates'):              
             
             # This is for the beta and rho updates
-            self._jvpdz = tf.gradients(self._vjp, self._dummy_var, self._deltaz, name='jvpdz')[0]
+            self._jvpdz = tf.gradients(self._vjp, self._dummy_var, tf.stop_gradient(self._deltaz),
+                                       name='jvpdz')[0]
 
             if self._squared_loss:
                 self._hjvpdz = self._jvpdz
             else:
-                self._hjvpdz = tf.gradients(tf.gradients(self._loss_fn_tensor, 
-                                                       self._predictions_fn_tensor)[0][None, :] 
-                                          @ self._jvpdz[:,None], self._predictions_fn_tensor,
-                                          stop_gradients=self._jvpdz)[0]
+                #self._hjvpdz = tf.gradients(tf.gradients(self._loss_fn_tensor, 
+                #                                       self._predictions_fn_tensor)[0][None, :] 
+                #                          @ self._jvpdz[:,None], self._predictions_fn_tensor,
+                #                          stop_gradients=self._jvpdz)[0]
+                self._hjvpdz = _hessian_vector_product(ys=[self._loss_fn_tensor],
+                                                       xs=[self._predictions_fn_tensor],
+                                                       v=[self._jvpdz])[0]
 
             a11 = tf.reduce_sum(self._hjvpdz * self._jvpdz)
             a12 = tf.reduce_sum(self._jvpz * self._hjvpdz)
@@ -159,21 +176,13 @@ class Curveball(object):
             # Among the many things I tried, this seemed to be  the only one that worked somewhat consistently
             m_b = tf.reshape(tf.linalg.solve(A + tf.eye(2) * 100 * np.finfo('float32').eps,
                                              b[:,None]), [-1])
-                             
             
             beta = m_b[0]
             rho = -m_b[1]
             M = -0.5 * tf.reduce_sum(m_b * b)
         return beta, rho, M
             
-    def _damping_update(self, 
-                       update_threshold_low: float = 0.5,
-                       update_threshold_high: float = 1.5,
-                       damping_threshold_low: float = 1e-7,
-                       damping_threshold_high: float = 1e7) -> tf.Operation:
-        
-        import sys
-        
+    def _damping_update(self) -> tf.Operation:
         # It turns out that tensorflow can only calculate the value of a tensor *once* during a session.run() call.
         # This means that I cannot calculate the loss value *before* and *after* the variable update within the 
         # same session.run call. Since the damping update reuires both the values, I am separating this out.
@@ -191,14 +200,14 @@ class Curveball(object):
                 f2 = lambda: tf.constant(self._damping_update_factor)
                 f3 = lambda: tf.constant(1.0)
 
-                update_factor = tf.case({tf.less(gamma_val, update_threshold_low):f1, 
-                                 tf.greater(gamma_val, update_threshold_high):f2},
-                                 default=f3)
+                update_factor = tf.case({tf.less(gamma_val, self._update_cond_threshold_low):f1, 
+                                 tf.greater(gamma_val, self._update_cond_threshold_high):f2},
+                                 default=f3, exclusive=True)
 
                 damping_factor_new = tf.clip_by_value(self._damping_factor 
                                                       * update_factor, 
-                                                      damping_threshold_low, 
-                                                      damping_threshold_high)
+                                                      self._damping_threshold_low, 
+                                                      self._damping_threshold_high)
                 return damping_factor_new
 
             damping_new_op = lambda: tf.assign(self._damping_factor, update(), name='damping_new_op')
@@ -352,9 +361,7 @@ class CurveballOrig(object):
 
             A = tf.stack([[a11, a12],[a12, a22]])
             b = tf.stack([b1, b2])
-            self.A = A
-            self.b = b
-    
+            
             # Cannot use vanilla matrix inverse because the matrix is sometimes singular
             #m_b = tf.reshape(tf.matrix_inverse(A)  @ b[:, None], [-1])
             
@@ -386,8 +393,7 @@ class CurveballOrig(object):
             
             # Another approach
             m_b = tf.reshape(pinv(A) @ b[:,None], [-1])
-            self.m_b = m_b
-            
+                        
             self._beta = m_b[0]
             self._rho = -m_b[1]
             self._M = -0.5 * tf.reduce_sum(m_b * b)
@@ -416,7 +422,7 @@ class CurveballOrig(object):
 
                 update_factor = tf.case({tf.less(gamma_val, update_threshold_low):f1, 
                                  tf.greater(gamma_val, update_threshold_high):f2},
-                                 default=f3)
+                                 default=f3, exclusive=True)
 
                 damping_factor_new = tf.clip_by_value(self._damping_factor 
                                                       * update_factor, 

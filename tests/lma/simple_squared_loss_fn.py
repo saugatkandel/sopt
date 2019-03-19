@@ -48,10 +48,6 @@ z_guess = np.random.randn(30).astype('float32')
 
 
 
-np.finfo('float32').eps * np.linalg.norm(out1), np.linalg.norm(out1)
-
-
-
 ag_lma1 = LMAag(z_guess, y_pred, loss_fn, squared_loss=True, damping_factor=1., cg_tol=1e-5)
 ag_lma2 = LMAag(z_guess, y_pred, loss_fn, squared_loss=False, damping_factor=1., cg_tol=1e-5)
 
@@ -59,7 +55,7 @@ ag_lma2 = LMAag(z_guess, y_pred, loss_fn, squared_loss=False, damping_factor=1.,
 
 ag_losses1 = []
 ag_losses2 = []
-for i in range(20):
+for i in range(10):
     out1 = ag_lma1.minimize()
     out2 = ag_lma2.minimize()
     print(i, loss_fn(y_pred(out1)), loss_fn(y_pred(out2)))
@@ -101,7 +97,7 @@ session.run(tf.global_variables_initializer())
 
 tf_losses1 = []
 tf_losses2 = []
-for i in range(50):
+for i in range(10):
     session.run([tf_lma1_min, tf_lma2_min])
     lossval1, lossval2 = session.run([loss_tensor1, loss_tensor2])
     print(i, lossval1, lossval2)
@@ -111,15 +107,6 @@ for i in range(50):
 
 
 
-ag_losses1[:5], tf_losses1[:5], tf_losses2[:5]
-
-
-
-# Any discrepancy here is because curveball requires a matrix inversion step
-# the matrix becomes singular fairly often
-# I tried calculating the pseudo inverse myself, but all the approach I tried for this 
-# in tensorflow game solutions less stable and accurate than the numpy counterpart.
-
 plt.plot(ag_losses1, color='blue', ls=':', linewidth=5.0, alpha=0.8, label='ag_sq_true')
 plt.plot(ag_losses2, color='green', ls='--', linewidth=5.0, alpha=0.4, label='ag_sq_false')
 plt.plot(tf_losses1, color='red', ls=':', linewidth=5.0, alpha=0.8, label='tf_sq_true')
@@ -127,86 +114,6 @@ plt.plot(tf_losses2, color='orange', ls='--', linewidth=5.0, alpha=0.4, label='t
 plt.yscale('log')
 plt.legend(loc='best')
 plt.show()
-
-
-
-get_ipython().run_line_magic('timeit', 'session.run(ct1_min)')
-
-
-
-get_ipython().run_line_magic('timeit', 'session.run(ct2_min)')
-
-
-
-get_ipython().run_line_magic('timeit', 'session.run(ct1_min)')
-
-
-
-
-
-
-
-print(ag_losses1[:10], tf_losses2[:10])
-
-
-
-from tensorflow.python.ops.gradients_impl import _hessian_vector_product
-
-
-
-tf.reset_default_graph()
-var1 = tf.get_variable('var1', dtype=tf.float32, initializer=z_guess)
-#var2 = tf.get_variable('var2', dtype=tf.float32, initializer=z_guess)
-
-tf_y_true = tf.convert_to_tensor(y_true_flat, dtype='float32', name='y_true')
-tf_affine_transform = tf.convert_to_tensor(affine_transform, dtype='float32', name='affine_transform')
-
-def tf_y_pred(z):
-    return tf.reshape(tf_affine_transform @ tf.reshape(z, [3, -1]), [-1])
-def tf_loss(y_pred):
-    return 0.5 * tf.reduce_sum((tf_y_true - y_pred)**2)
-
-preds1 = tf.reshape(tf_affine_transform @ tf.reshape(var1, [3, -1]), [-1])#tf_y_pred(var1)
-#preds2 = tf_y_pred(var2)
-loss_tensor1 = tf_loss(preds1)
-#loss_tensor2 = tf_loss(preds2)    
-
-
-
-dummy_var = tf.get_variable('dummy', dtype=tf.float32, initializer=tf.ones_like(var1))
-
-vjp = tf.gradients(preds1, var1, dummy_var)[0]
-jvp = tf.gradients(vjp, dummy_var, tf_y_true)[0]
-gvp = tf.gradients(preds1, var1, jvp)
-v = tf.ones_like(var1)
-hvp = _hessian_vector_product(ys=[loss_tensor1], xs=[var1], v=[v])
-hvp2 = tf.gradients(tf.gradients(loss_tensor1, var1)[0][None, :] @ v[:,None], var1, stop_gradients=v)[0]
-hvp3 = tf.gradients(tf.gradients(loss_tensor1, var1)[0][None, :] @ v[:,None], var1)[0]
-
-
-
-session = tf.Session()
-session.run(tf.global_variables_initializer())
-
-
-
-testout = session.run(vjp)
-
-
-
-out =session.run(hvp)
-
-
-
-get_ipython().run_line_magic('timeit', 'session.run(hvp)')
-
-
-
-get_ipython().run_line_magic('timeit', 'session.run(hvp2)')
-
-
-
-get_ipython().run_line_magic('timeit', 'session.run(gvp)')
 
 
 

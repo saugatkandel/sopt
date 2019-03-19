@@ -15,7 +15,7 @@ class LMA(object):
     """
     def __init__(self, 
                  input_variable: np.ndarray,
-                 loss_input_fn: Callable[[np.ndarray], np.ndarray],
+                 predictions_fn: Callable[[np.ndarray], np.ndarray],
                  loss_fn: Callable[[np.ndarray], float],
                  damping_factor: float = 1.0, 
                  damping_update_factor: float = 2/3,
@@ -44,7 +44,7 @@ class LMA(object):
         """
         
         self._input_var = input_variable
-        self._loss_input_fn = loss_input_fn
+        self._predictions_fn = predictions_fn
         self._loss_fn = loss_fn
         
         # Multiplicating factor to update the damping factor at the end of each cycle
@@ -61,8 +61,8 @@ class LMA(object):
         # variable used for the updates
         self._update_var = np.zeros_like(self._input_var)
         
-        self._vjp = ag.make_vjp(self._loss_input_fn)
-        self._jvp = ag.differential_operators.make_jvp_reversemode(self._loss_input_fn)
+        self._vjp = ag.make_vjp(self._predictions_fn)
+        self._jvp = ag.differential_operators.make_jvp_reversemode(self._predictions_fn)
         
         self._grad = ag.grad(self._loss_fn)
         
@@ -83,21 +83,26 @@ class LMA(object):
         else:
             hjvp_fun_this, jloss = self._hjvp(predictions_array)
         
-        return vjp_fun_this, hjvp_fun_this, jloss, loss_before_update
+        return vjp_fun_this, jvp_fun_this, hjvp_fun_this, jloss, loss_before_update
     
     def minimize(self):
         
         [
             vjp_fun_this, 
+            jvp_fun_this,
             hjvp_fun_this,
             jloss, 
             loss_before_update 
         ] = self._matrix_vector_operators()
         
-        linear_b = vjp_fun_this(jloss)
+        if loss_before_update < 10 * np.finfo('float32').eps:
+            print('Stopping iteration. Very low loss value:', loss_before_update)
+            return self._input_var
+        
+        linear_b = -vjp_fun_this(jloss)
         
         while True:
-            linear_ax = lambda h: vjp_fun_this(hjvp_fun_this(h)) + self._damping_factor * h
+            linear_ax = lambda h: vjp_fun_this(hjvp_fun_this(jvp_fun_this(h))) + self._damping_factor * h
             
             # I am planning on trying out both the scipy linear solver 
             # and my own conjugate gradient solver.
@@ -116,18 +121,23 @@ class LMA(object):
             
             loss_new = self._loss_fn(self._predictions_fn(x_new))
             loss_change = loss_new - loss_before_update
-            expected_quadratic_change = np.dot(update_this, self._damping_factor * update_this + linear_b)
+            expected_quadratic_change = -np.dot(update_this, self._damping_factor * update_this + linear_b)
             reduction_ratio = loss_change / expected_quadratic_change
+            #print(f'red {reduction_ratio:3.4f} damp {self._damping_factor:3.4f} num {loss_change:3.4f} denom {expected_quadratic_change}')
             
             if reduction_ratio > self._update_cond_threshold_high:
                 self._damping_factor *= self._damping_update_factor
             elif reduction_ratio < self._update_cond_threshold_low:
                 self._damping_factor *= 1 / self._damping_update_factor 
+            self._damping_factor = np.clip(self._damping_factor,
+                                           a_min=self._damping_threshold_low, 
+                                           a_max=self._damping_threshold_high)
             
             if reduction_ratio > 0:
                 self._update_var = update_this
                 self._input_var = x_new
-                break      
+                break
+
         return self._input_var
         
         

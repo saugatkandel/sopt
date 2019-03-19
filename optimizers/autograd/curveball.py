@@ -15,11 +15,15 @@ class Curveball(object):
     """
     def __init__(self, 
                  input_variable: np.ndarray,
-                 loss_input_fn: Callable[[np.ndarray], np.ndarray],
+                 predictions_fn: Callable[[np.ndarray], np.ndarray],
                  loss_fn: Callable[[np.ndarray], float],
                  damping_factor: float = 1.0, 
                  damping_update_factor: float = 0.999,
                  damping_update_frequency: int = 5,
+                 update_cond_threshold_low: float = 0.5, 
+                 update_cond_threshold_high: float = 1.5,
+                 damping_threshold_low: float = 1e-7,
+                 damping_threshold_high: float = 1e7,
                  alpha_init: float = 1.0,
                  squared_loss: bool = True) -> None:
         """
@@ -43,21 +47,25 @@ class Curveball(object):
         The beta and rho values are updated at each cycle, so there is no intial value."""
         
         self._input_var = input_variable
-        self._loss_input_fn = loss_input_fn
+        self._predictions_fn = predictions_fn
         self._loss_fn = loss_fn
         
         # Multiplicating factor to update the damping factor at the end of each cycle
         self._damping_factor = damping_factor
         self._damping_update_factor = damping_update_factor
         self._damping_update_frequency = damping_update_frequency
+        self._update_cond_threshold_low = update_cond_threshold_low
+        self._update_cond_threshold_high =  update_cond_threshold_high
+        self._damping_threshold_low = damping_threshold_low
+        self._damping_threshold_high = damping_threshold_high
         self._squared_loss = squared_loss
         self._alpha = alpha_init
         
         self._z = np.zeros_like(self._input_var)
         self._iteration = 0
         
-        self._vjp = ag.make_vjp(self._loss_input_fn)
-        self._jvp = ag.differential_operators.make_jvp_reversemode(self._loss_input_fn)
+        self._vjp = ag.make_vjp(self._predictions_fn)
+        self._jvp = ag.differential_operators.make_jvp_reversemode(self._predictions_fn)
         
         self._grad = ag.grad(self._loss_fn)
         
@@ -70,16 +78,16 @@ class Curveball(object):
 
 
     def _matrix_vector_updates(self) -> List[float]:   
-        vjp_fun_this, loss_input_array = self._vjp(self._input_var) 
+        vjp_fun_this, predictions_array = self._vjp(self._input_var) 
         jvp_fun_this = self._jvp(self._input_var)
         
-        loss_before_update = self._loss_fn(loss_input_array)
+        loss_before_update = self._loss_fn(predictions_array)
         
         if self._squared_loss: 
             hjvp_fun_this = lambda x: x#jvp_fun_this
-            jloss = self._grad(loss_input_array)
+            jloss = self._grad(predictions_array)
         else:
-            hjvp_fun_this, jloss = self._hjvp(loss_input_array)
+            hjvp_fun_this, jloss = self._hjvp(predictions_array)
         
         jvpz = jvp_fun_this(self._z)
         hjvpz = hjvp_fun_this(jvpz)
@@ -108,12 +116,8 @@ class Curveball(object):
         A = np.array([[a11, a12],[a12, a22]])
         b = np.array([b1, b2])
         
-        self.A = A
-        self.b = b
-        
-        
         m_b = np.linalg.pinv(A) @ b
-        self.m_b = m_b
+        
         beta = m_b[0]
         rho = -m_b[1]
         
@@ -125,24 +129,20 @@ class Curveball(object):
     
     def _damping_update(self, 
                         loss_before_update: float,
-                        expected_quadratic_change: float,
-                        update_threshold_low: float = 0.5, 
-                        update_threshold_high: float = 1.5,
-                        damping_threshold_low: float = 1e-7,
-                        damping_threshold_high: float = 1e7) -> None:
+                        expected_quadratic_change: float) -> None:
         
-        loss_after_update = self._loss_fn(self._loss_input_fn(self._input_var))
+        loss_after_update = self._loss_fn(self._predictions_fn(self._input_var))
         actual_loss_change = loss_after_update - loss_before_update
         gamma = actual_loss_change / expected_quadratic_change
         
-        if gamma < update_threshold_low:
+        if gamma < self._update_cond_threshold_low:
             self._damping_factor = self._damping_factor / self._damping_update_factor
-        elif gamma > update_threshold_high:
+        elif gamma > self._update_cond_threshold_high:
             self._damping_factor = self._damping_factor * self._damping_update_factor
         
         self._damping_factor = np.clip(self._damping_factor, 
-                                       a_min=damping_threshold_low, 
-                                       a_max=damping_threshold_high)
+                                       a_min=self._damping_threshold_low, 
+                                       a_max=self._damping_threshold_high)
     
     def minimize(self) -> np.ndarray:
         loss_before_update, M = self._matrix_vector_updates()

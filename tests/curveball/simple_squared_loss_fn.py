@@ -9,8 +9,8 @@
 from autograd import numpy as np
 import tensorflow as tf
 from matplotlib import pyplot as plt
-from optimizers.autograd.lma import LMA
-#from optimizers.tensorflow.curveball import Curveball as Cat
+from optimizers.autograd.curveball import Curveball as agCb
+from optimizers.tensorflow.curveball import Curveball as tfCb
 
 
 
@@ -48,27 +48,19 @@ z_guess = np.random.randn(300).astype('float32')
 
 
 
-lma_ag1 = LMA(z_guess, y_pred, loss_fn, squared_loss=True)
-lma_ag2 = LMA(z_guess, y_pred, loss_fn, squared_loss=False)
+cb_ag1 = agCb(z_guess, y_pred, loss_fn, squared_loss=True)
+cb_ag2 = agCb(z_guess, y_pred, loss_fn, squared_loss=False)
 
 
 
 ag_losses1 = []
 ag_losses2 = []
 for i in range(50):
-    out1 = lma_ag1.minimize()
+    out1 = cb_ag1.minimize()
     lossval = loss_fn(y_pred(out1))
-    out2 = lma_ag2.minimize()
+    out2 = cb_ag2.minimize()
     ag_losses1.append(loss_fn(y_pred(out1)))
     ag_losses2.append(loss_fn(y_pred(out2)))
-
-
-
-plt.plot(ag_losses1, color='blue', ls=':', linewidth=5.0, alpha=0.8, label='ag_sq_true')
-plt.plot(ag_losses2, color='green', ls='--', linewidth=5.0, alpha=0.4, label='ag_sq_false')
-plt.yscale('log')
-plt.legend(loc='best')
-plt.show()
 
 
 
@@ -93,8 +85,8 @@ preds2 = tf_y_pred(var2)
 loss_tensor1 = tf_loss(preds1)
 loss_tensor2 = tf_loss(preds2)
 
-ct1 = Cat(var1, tf_y_pred, tf_loss, name='opt1', squared_loss=True)
-ct2 = Cat(var2, tf_y_pred, tf_loss, name='opt2', squared_loss=False)
+ct1 = tfCb(var1, tf_y_pred, tf_loss, name='opt1', squared_loss=True)
+ct2 = tfCb(var2, tf_y_pred, tf_loss, name='opt2', squared_loss=False)
 
 ct1_min = ct1.minimize()
 ct2_min = ct2.minimize()

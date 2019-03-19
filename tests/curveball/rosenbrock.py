@@ -2,15 +2,19 @@
 # coding: utf-8
 
 
-# This class only tests whether tensorflow and autograd both calculate the hessian-vector-products identically.
+# This class tests whether tensorflow and autograd both calculate the hessian-vector-products identically.
+
+# The rosenbrock function is not a least squares optimization problem. 
+# Additionally, I have formulated the loss function in such a way that to find a minimum, we need to 
+# calculate the hessian-vector product.
 
 
 
 from autograd import numpy as np
 import tensorflow as tf
 from matplotlib import pyplot as plt
-from optimizers.autograd.curveball import Curveball as Cag
-from optimizers.tensorflow.curveball import Curveball as Cat
+from optimizers.autograd.curveball import Curveball as agCb
+from optimizers.tensorflow.curveball import Curveball as tfCb
 
 
 
@@ -31,7 +35,7 @@ z_init = np.zeros(10)
 
 
 # Autograd
-cball_ag = Cag(z_init, x_fn, rosenbrock, squared_loss=False)
+cball_ag = agCb(z_init, x_fn, rosenbrock, squared_loss=False)
 
 
 
@@ -55,7 +59,7 @@ def tf_rosenbrock(x):
 
 tf_rosenbrock_tensor = tf_rosenbrock(tf_x_fn_tensor)
 
-cball_tf = Cat(tf_var, tf_x_fn, tf_rosenbrock, name='ros', squared_loss=False)
+cball_tf = tfCb(tf_var, tf_x_fn, tf_rosenbrock, name='ros', squared_loss=False)
 minimizer = cball_tf.minimize()
 
 session = tf.Session()

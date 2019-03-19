@@ -2,7 +2,11 @@
 # coding: utf-8
 
 
-# This class only tests whether tensorflow and autograd both calculate the hessian-vector-products identically.
+# This class tests whether tensorflow and autograd both calculate the hessian-vector-products identically.
+
+# The rosenbrock function is not a least squares optimization problem. 
+# Additionally, I have formulated the loss function in such a way that to find a minimum, we need to 
+# calculate the hessian-vector product.
 
 
 
@@ -44,10 +48,6 @@ for i in range(100):
 
 
 
-out
-
-
-
 # Tensorflow
 tf.reset_default_graph()
 tf_var = tf.Variable(z_init, dtype='float32')
@@ -72,12 +72,7 @@ tf_losses = []
 for i in range(100):
     session.run(minimizer)
     lossval = session.run(tf_rosenbrock_tensor)
-    #session.run(damping_update, feed_dict={placeholder:lossval})
     tf_losses.append(lossval)
-
-
-
-tf_losses[:5], ag_losses[:5]
 
 
 
@@ -94,13 +89,5 @@ plt.show()
 
 
 # Solution is all ones
-session.run(lma_tf._damping_factor)
-
-
-
-lma_ag._damping_factor
-
-
-
-
+session.run(lma_tf._input_var)
 
