@@ -9,8 +9,8 @@
 from autograd import numpy as np
 import tensorflow as tf
 from matplotlib import pyplot as plt
-from optimizers.autograd.curveball import Curveball as Cag
-from optimizers.tensorflow.curveball import Curveball as Cat
+from optimizers.autograd.lma import LMA
+#from optimizers.tensorflow.curveball import Curveball as Cat
 
 
 
@@ -48,19 +48,27 @@ z_guess = np.random.randn(300).astype('float32')
 
 
 
-ca1 = Cag(z_guess, y_pred, loss_fn, squared_loss=True)
-ca2 = Cag(z_guess, y_pred, loss_fn, squared_loss=False)
+lma_ag1 = LMA(z_guess, y_pred, loss_fn, squared_loss=True)
+lma_ag2 = LMA(z_guess, y_pred, loss_fn, squared_loss=False)
 
 
 
 ag_losses1 = []
 ag_losses2 = []
 for i in range(50):
-    out1 = ca1.minimize()
+    out1 = lma_ag1.minimize()
     lossval = loss_fn(y_pred(out1))
-    out2 = ca2.minimize()
+    out2 = lma_ag2.minimize()
     ag_losses1.append(loss_fn(y_pred(out1)))
     ag_losses2.append(loss_fn(y_pred(out2)))
+
+
+
+plt.plot(ag_losses1, color='blue', ls=':', linewidth=5.0, alpha=0.8, label='ag_sq_true')
+plt.plot(ag_losses2, color='green', ls='--', linewidth=5.0, alpha=0.4, label='ag_sq_false')
+plt.yscale('log')
+plt.legend(loc='best')
+plt.show()
 
 
 

@@ -9,8 +9,8 @@
 from autograd import numpy as np
 import tensorflow as tf
 from matplotlib import pyplot as plt
-from optimizers.autograd.lma import LMA
-#from optimizers.tensorflow.curveball import Curveball as Cat
+from optimizers.autograd.lma import LMA as LMAag
+from optimizers.tensorflow.lma import LMA as LMAtf
 
 
 
@@ -31,7 +31,7 @@ z_init = np.zeros(10)
 
 
 # Autograd
-lma_ag = LMA(z_init, x_fn, rosenbrock, squared_loss=False, cg_tol=1e-8, max_cg_iter=50, damping_update_factor=0.9)
+lma_ag = LMAag(z_init, x_fn, rosenbrock, squared_loss=False, cg_tol=1e-5, max_cg_iter=20)
 
 
 
@@ -60,8 +60,8 @@ def tf_rosenbrock(x):
 
 tf_rosenbrock_tensor = tf_rosenbrock(tf_x_fn_tensor)
 
-cball_tf = Cat(tf_var, tf_x_fn, tf_rosenbrock, name='ros', squared_loss=False)
-minimizer = cball_tf.minimize()
+lma_tf = LMAtf(tf_var, tf_x_fn, tf_rosenbrock, name='ros', squared_loss=False, cg_tol=1e-5, max_cg_iter=20)
+minimizer = lma_tf.minimize()
 
 session = tf.Session()
 session.run(tf.global_variables_initializer())
@@ -69,11 +69,15 @@ session.run(tf.global_variables_initializer())
 
 
 tf_losses = []
-for i in range(30):
+for i in range(100):
     session.run(minimizer)
     lossval = session.run(tf_rosenbrock_tensor)
     #session.run(damping_update, feed_dict={placeholder:lossval})
     tf_losses.append(lossval)
+
+
+
+tf_losses[:5], ag_losses[:5]
 
 
 
@@ -90,7 +94,11 @@ plt.show()
 
 
 # Solution is all ones
-session.run(tf_var)
+session.run(lma_tf._damping_factor)
+
+
+
+lma_ag._damping_factor
 
 
 
