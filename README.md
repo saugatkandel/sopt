@@ -21,7 +21,7 @@ and the "loss":
 
 <img src="https://latex.codecogs.com/svg.latex?\Large&space;L:\mathbb{R}^n\rightarrow\mathbb{R}." title="\Large Loss" />
 
-The Gauss-Newton matrix then takes the form  
+The generalized Gauss-Newton matrix then takes the form  
 
 <img src="https://latex.codecogs.com/svg.latex?\Large&space;G=J^T_f\cdot{H}_L\cdot{J}_f" title="\Large Gauss-Newton" />
 
