@@ -37,9 +37,6 @@ class Curveball(object):
         self._predictions_fn = predictions_fn
         self._loss_fn = loss_fn
         
-        self._predictions_fn_tensor = self._predictions_fn(self._input_var)
-        self._loss_fn_tensor = self._loss_fn(self._predictions_fn_tensor)
-        
         # Multiplicating factor to update the damping factor at the end of each cycle
         self._damping_update_factor = damping_update_factor
         self._damping_update_frequency = damping_update_frequency
@@ -51,6 +48,9 @@ class Curveball(object):
         self._alpha = alpha_init
 
         with tf.variable_scope(name):
+            self._predictions_fn_tensor = self._predictions_fn(self._input_var)
+            self._loss_fn_tensor = self._loss_fn(self._predictions_fn_tensor)
+            
             self._damping_factor = tf.get_variable("lambda", dtype=tf.float32, 
                                                   initializer=damping_factor)
 
@@ -157,26 +157,20 @@ class Curveball(object):
                 #rcond = np.finfo(dtype).eps * 2 * 10
                 s, u, v = tf.svd(a)
                 # Ignore singular values close to zero to prevent numerical overflow
-                limit = np.finfo(dtype).eps * 10 
+                limit = np.finfo(dtype).eps * 10
                 non_zero = tf.greater(s, limit)
 
-                reciprocal = tf.where(non_zero, tf.reciprocal(s), tf.zeros(s.shape, dtype='float64'))
+                reciprocal = tf.where(non_zero, tf.reciprocal(s), tf.zeros(s.shape, dtype='float32'))
                 lhs = tf.matmul(v, tf.matrix_diag(reciprocal))
                 return tf.matmul(lhs, u, transpose_b=True)
             
-            #A_double = tf.cast(A, tf.float64)
-            #b_double = tf.cast(b, tf.float64)
             
-            #m_b_double = tf.reshape(tf.linalg.solve(A_double + tf.eye(2, dtype='float64') * 100 * np.finfo('float32').eps,
-            #                                        b_double[:, None]), [-1])
-            
-            #m_b_double = tf.reshape(pinv(A_double) @ b_double[:,None], [-1])
-            #m_b = tf.cast(m_b_double, tf.float32)
-            
+            #m_b = tf.reshape(pinv(A) @ b[:,None], [-1])
+                        
             # Among the many things I tried, this seemed to be  the only one that worked somewhat consistently
             m_b = tf.reshape(tf.linalg.solve(A + tf.eye(2) * 100 * np.finfo('float32').eps,
-                                             b[:,None]), [-1])
-            
+                                 b[:,None]), [-1])
+
             beta = m_b[0]
             rho = -m_b[1]
             M = -0.5 * tf.reduce_sum(m_b * b)

@@ -44,7 +44,6 @@ for i in range(100):
     out = lma_ag.minimize()
     lossval = rosenbrock(x_fn(out))
     ag_losses.append(lossval)
-    if i % 10 == 0: print(lossval)
 
 
 
@@ -76,10 +75,6 @@ for i in range(100):
 
 
 
-# The discrepancy here is because curveball requires a matrix inversion step
-# the matrix becomes singular fairly often
-# I tried calculating the pseudo inverse myself, but all the approach I tried for this 
-# in tensorflow game solutions less stable and accurate than the numpy counterpart.
 plt.plot(ag_losses, color='blue', ls=':', linewidth=5.0, alpha=0.8, label='ag')
 plt.plot(tf_losses, color='red', ls='--', linewidth=5.0, alpha=0.4, label='tf')
 plt.yscale('log')

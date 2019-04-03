@@ -160,10 +160,11 @@ print(flops_gvp.total_float_ops)
 
 # curveball (without hessian-vector-product)
 tf.reset_default_graph()
+
 var = tf.get_variable('var', dtype=tf.float32, initializer=z_guess)
 
 tf_y_true = tf.convert_to_tensor(y_true_flat, dtype='float32', name='y_true')
-tf_affine_transform = tf.convert_to_tensor(affine_transform, dtype='float32', name='affine_transform') + 1.1231
+tf_affine_transform = tf.convert_to_tensor(affine_transform, dtype='float32', name='affine_transform')
 
 preds_fn = lambda x: tf_y_pred(x, tf_affine_transform)
 loss_fn = lambda x: tf_loss(x, tf_y_true)
@@ -179,8 +180,6 @@ run_meta = tf.RunMetadata()
 opts = tf.profiler.ProfileOptionBuilder.float_operation()    
 flops_gvp = tf.profiler.profile(run_meta=run_meta, cmd='graph', options=opts) 
 print(flops_gvp.total_float_ops)
-print("Since the number of ops required for the matrix inversion step is not fixed, "
-      +"this number changes depending on the matrix values (by < 100)")
 
 
 
@@ -206,6 +205,8 @@ run_meta = tf.RunMetadata()
 opts = tf.profiler.ProfileOptionBuilder.float_operation()    
 flops_gvp = tf.profiler.profile(run_meta=run_meta, cmd='graph', options=opts) 
 print(flops_gvp.total_float_ops)
-print("Note that this number includes all the conjugate gradient iterations required for the completion of this step. "
-      + "This usually increases closer to the minimum")
+
+
+
+
 

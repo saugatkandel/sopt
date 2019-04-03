@@ -22,7 +22,7 @@ class LMA(object):
                  update_cond_threshold_high: float = 0.75,
                  damping_threshold_low: float = 1e-7,
                  damping_threshold_high: float = 1e7,
-                 max_cg_iter: int = 100,
+                 max_cg_iter: int = 20,
                  cg_tol: float = 1e-5, 
                  squared_loss: bool = True) -> None:
         
@@ -50,9 +50,11 @@ class LMA(object):
                                                    initializer=damping_factor,
                                                    trainable=False)
             self._update_var = tf.get_variable("delta", dtype=tf.float32,
-                                               initializer=tf.zeros_like(self._input_var))
+                                               initializer=tf.zeros_like(self._input_var),
+                                               trainable=False)
             self._dummy_var = tf.get_variable("dummy", dtype=tf.float32, 
-                                              initializer=tf.zeros_like(self._predictions_fn_tensor))
+                                              initializer=tf.zeros_like(self._predictions_fn_tensor),
+                                              trainable=False)
             
             self._loss_before_update = tf.get_variable("loss_before_update", dtype=tf.float32,
                                                      initializer=0.,
@@ -61,10 +63,17 @@ class LMA(object):
                                                          dtype=tf.float32,
                                                          initializer=0.,
                                                          trainable=False)
-        
+            self._iteration = tf.get_variable("iteration", shape=[], dtype=tf.int32,
+                                              initializer=tf.zeros_initializer,
+                                              trainable=False)
+            
+            self._total_cg_iterations = tf.get_variable("total_cg_iterations", 
+                                                        dtype=tf.int32, shape=[],
+                                                        initializer=tf.zeros_initializer,
+                                                        trainable=False)
         # Set up the second order calculations to define matrix-free linear ops.
         self._setup_second_order()
-        
+    
     def _setup_hessian_vector_product(self, 
                                       jvp_fn: Callable[[tf.Tensor], tf.Tensor],
                                       x: tf.Tensor,
@@ -102,15 +111,15 @@ class LMA(object):
     
     def minimize(self) -> tf.Operation:
         tf.logging.warning("It is important to monitor the loss value through the training process."
-                           + "If the loss value becomes too small (than machine accuracy?),"
-                           + "then the optimizer is liable to get stuck in an infinite loop.")
+                           + "If the loss value becomes too small (compared to machine accuracy?),"
+                           + "then the optimizer can get stuck in an infinite loop.")
         with tf.name_scope(self._name + '_minimize_step'):
             store_loss_op = tf.assign(self._loss_before_update, self._loss_fn_tensor,
                                       name='store_loss_op')
             jhjvp_fn_l_h = lambda l, h, v_constant: self._jhjvp_fn(h, v_constant) + l * h
             linear_b = -self._grads
                 
-            def _body(damping, update, reduction_ratio, v_constant):
+            def _body(damping, update, reduction_ratio, cg_iterations, v_constant):
                 linear_ax = MatrixFreeLinearOp(lambda h: jhjvp_fn_l_h(damping, h, v_constant),
                                                tf.TensorShape((self._input_var.shape.dims[0],
                                                                self._input_var.shape.dims[0])))
@@ -119,7 +128,7 @@ class LMA(object):
                                               x=self._update_var,
                                               tol=self._cg_tol,
                                               max_iter=self._max_cg_iter)
-                update = cg_solve.x
+                update = tf.identity(cg_solve.x, name='cg_solved')
                 expected_quadratic_change = -tf.tensordot(update, damping * update + linear_b, 1)
                 optimized_var = self._input_var + update
                 loss_new = self._loss_fn(self._predictions_fn(optimized_var))
@@ -136,18 +145,26 @@ class LMA(object):
                 damping_new = tf.clip_by_value(damping * update_factor, 
                                                self._damping_threshold_low, 
                                                self._damping_threshold_high)
-                return (damping_new, update, reduction_ratio, v_constant)
+                return (damping_new, update, reduction_ratio, cg_iterations + cg_solve.i, v_constant)
             
-            def _cond(damping, update, reduction_ratio, v_constant):
+            def _cond(damping, update, reduction_ratio, cg_iterations, v_constant):
                 return tf.math.logical_and(reduction_ratio <= 0, 
                                           self._loss_before_update > 10 * np.finfo('float32').eps)
             
             with tf.control_dependencies([store_loss_op]):
-                damping_new, update, reduction_ratio, _ = tf.while_loop(_cond, _body,
-                                                                     (self._damping_factor, self._update_var, 0., self._input_var), 
-                                                                     back_prop=False)
+                damping_new, update, reduction_ratio, cg_iterations, _ = tf.while_loop(_cond, _body,
+                                                                                       (self._damping_factor, 
+                                                                                        self._update_var, 0., 
+                                                                                        tf.constant(0, dtype=tf.int32),
+                                                                                        self._input_var), 
+                                                                                       back_prop=False)
                 update_ops = [tf.assign(self._damping_factor, damping_new),
                               tf.assign(self._update_var, update),
                               tf.assign(self._input_var, self._input_var + update)]
-        return update_ops
+            with tf.control_dependencies(update_ops):
+                cg_counter_op = tf.assign(self._total_cg_iterations, self._total_cg_iterations + cg_iterations,
+                                          name='cg_counter_op')
+            with tf.control_dependencies([cg_counter_op]):
+                counter_op = tf.assign(self._iteration, self._iteration + 1, name='counter_op')
+        return counter_op
 
