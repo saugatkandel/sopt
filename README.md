@@ -1,6 +1,6 @@
-# second_order_phase_retrieval
+# Second Order Optimization
 
-Tensorflow and autograd reverse-mode optimization routines  that use a damped Gauss-Newton matrix. The methods included are:
+Tensorflow and autograd reverse-mode optimization routines that use a damped Gauss-Newton matrix. The methods included are:
 
 1) Levenberg-Marquardt
 2) Curveball
