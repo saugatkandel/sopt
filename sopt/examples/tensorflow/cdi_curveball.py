@@ -5,8 +5,8 @@
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
-from examples.utils import getSampleObj
-from optimizers.tensorflow import Curveball, LMA
+from sopt.examples.utils import getSampleObj
+from sopt.optimizers.tensorflow import Curveball, LMA
 
 
 
@@ -76,9 +76,15 @@ session.run(tf.global_variables_initializer())
 
 
 
+losses = []
 for i in range(100):
     _, lossval = session.run([min_op, loss_fn_tensor])
+    losses.append(lossval)
     if i % 20 == 0: print(lossval)#, lossval2)
+
+
+
+plt.plot(np.log(losses))
 
 
 

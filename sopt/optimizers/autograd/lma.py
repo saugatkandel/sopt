@@ -121,7 +121,7 @@ class LMA(object):
             
             loss_new = self._loss_fn(self._predictions_fn(x_new))
             loss_change = loss_new - loss_before_update
-            expected_quadratic_change = -np.dot(update_this, self._damping_factor * update_this + linear_b)
+            expected_quadratic_change = -0.5 * np.dot(update_this, self._damping_factor * update_this + linear_b)
             reduction_ratio = loss_change / expected_quadratic_change
             #print(f'red {reduction_ratio:3.4f} damp {self._damping_factor:3.4f} num {loss_change:3.4f} denom {expected_quadratic_change}')
             

@@ -6,10 +6,10 @@ import numpy as np
 import tensorflow as tf
 from matplotlib import pyplot as plt
 from tensorflow.python.framework import graph_util
-import benchmarks.ops.tensorflow.flops_registry_custom
+import sopt.benchmarks.ops.tensorflow.flops_registry_custom
 from tensorflow.python.ops.gradients_impl import _hessian_vector_product
-from optimizers.tensorflow.curveball import Curveball
-from optimizers.tensorflow.lma import LMA
+from sopt.optimizers.tensorflow.curveball import Curveball
+from sopt.optimizers.tensorflow.lma import LMA
 
 
 

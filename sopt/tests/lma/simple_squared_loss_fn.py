@@ -9,8 +9,8 @@
 from autograd import numpy as np
 import tensorflow as tf
 from matplotlib import pyplot as plt
-from optimizers.autograd.lma import LMA as LMAag
-from optimizers.tensorflow.lma import LMA as LMAtf
+from sopt.optimizers.autograd.lma import LMA as LMAag
+from sopt.optimizers.tensorflow.lma import LMA as LMAtf
 
 
 
@@ -55,7 +55,7 @@ ag_lma2 = LMAag(z_guess, y_pred, loss_fn, squared_loss=False, damping_factor=1.,
 
 ag_losses1 = []
 ag_losses2 = []
-for i in range(10):
+for i in range(5):
     out1 = ag_lma1.minimize()
     out2 = ag_lma2.minimize()
     print(i, loss_fn(y_pred(out1)), loss_fn(y_pred(out2)))
@@ -97,7 +97,7 @@ session.run(tf.global_variables_initializer())
 
 tf_losses1 = []
 tf_losses2 = []
-for i in range(10):
+for i in range(5):
     session.run([tf_lma1_min, tf_lma2_min])
     lossval1, lossval2 = session.run([loss_tensor1, loss_tensor2])
     print(i, lossval1, lossval2)

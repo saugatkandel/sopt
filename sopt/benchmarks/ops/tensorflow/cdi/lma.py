@@ -5,11 +5,11 @@
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
-from examples.utils import getSampleObj
-from optimizers.tensorflow import LMA
-import benchmarks.ops.tensorflow.flops_registry_custom
+from sopt.examples.utils import getSampleObj
+from sopt.optimizers.tensorflow import LMA
+import sopt.benchmarks.ops.tensorflow.flops_registry_custom
 from tensorflow.python.framework import graph_util
-from benchmarks.ops.tensorflow.graph_utils_custom import get_flops_for_sub_graph, get_flops_for_node_list
+from sopt.benchmarks.ops.tensorflow.graph_utils_custom import get_flops_for_sub_graph, get_flops_for_node_list
 
 
 

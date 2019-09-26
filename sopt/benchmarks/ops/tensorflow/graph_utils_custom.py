@@ -4,7 +4,7 @@
 
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
-import benchmarks.ops.tensorflow.flops_registry_custom
+import sopt.benchmarks.ops.tensorflow.flops_registry_custom
 import tensorflow as tf
 from typing import List
 

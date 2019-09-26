@@ -13,8 +13,8 @@
 from autograd import numpy as np
 import tensorflow as tf
 from matplotlib import pyplot as plt
-from optimizers.autograd.curveball import Curveball as agCb
-from optimizers.tensorflow.curveball import Curveball as tfCb
+from sopt.optimizers.autograd.curveball import Curveball as agCb
+from sopt.optimizers.tensorflow.curveball import Curveball as tfCb
 
 
 

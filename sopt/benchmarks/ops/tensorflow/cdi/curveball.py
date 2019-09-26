@@ -5,10 +5,10 @@
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
-from examples.utils import getSampleObj
-from optimizers.tensorflow import Curveball
-import benchmarks.ops.tensorflow.flops_registry_custom
-from benchmarks.ops.tensorflow.graph_utils_custom import get_flops_for_sub_graph
+from sopt.examples.utils import getSampleObj
+from sopt.optimizers.tensorflow import Curveball
+import sopt.benchmarks.ops.tensorflow.flops_registry_custom
+from sopt.benchmarks.ops.tensorflow.graph_utils_custom import get_flops_for_sub_graph
 from tensorflow.python.framework import graph_util
 
 

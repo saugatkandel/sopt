@@ -13,8 +13,8 @@
 from autograd import numpy as np
 import tensorflow as tf
 from matplotlib import pyplot as plt
-from optimizers.autograd.lma import LMA as LMAag
-from optimizers.tensorflow.lma import LMA as LMAtf
+from sopt.optimizers.autograd.lma import LMA as LMAag
+from sopt.optimizers.tensorflow.lma import LMA as LMAtf
 
 
 
@@ -40,7 +40,7 @@ lma_ag = LMAag(z_init, x_fn, rosenbrock, squared_loss=False, cg_tol=1e-5, max_cg
 
 
 ag_losses = []
-for i in range(100):
+for i in range(10):
     out = lma_ag.minimize()
     lossval = rosenbrock(x_fn(out))
     ag_losses.append(lossval)
@@ -59,7 +59,7 @@ def tf_rosenbrock(x):
 
 tf_rosenbrock_tensor = tf_rosenbrock(tf_x_fn_tensor)
 
-lma_tf = LMAtf(tf_var, tf_x_fn, tf_rosenbrock, name='ros', squared_loss=False, cg_tol=1e-5, max_cg_iter=20)
+lma_tf = LMAtf(tf_var, tf_x_fn, tf_rosenbrock, name='ros', squared_loss=False, cg_tol=1e-5, max_cg_iter=200)
 minimizer = lma_tf.minimize()
 
 session = tf.Session()
@@ -68,7 +68,7 @@ session.run(tf.global_variables_initializer())
 
 
 tf_losses = []
-for i in range(100):
+for i in range(10):
     session.run(minimizer)
     lossval = session.run(tf_rosenbrock_tensor)
     tf_losses.append(lossval)
@@ -85,4 +85,8 @@ plt.show()
 
 # Solution is all ones
 session.run(lma_tf._input_var)
+
+
+
+
 

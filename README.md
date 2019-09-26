@@ -27,8 +27,14 @@ The generalized Gauss-Newton matrix then takes the form
 
 with *J* is the Jacobian for the function *f*, and *H* the hessian for *L*. 
 
-Note:
+Notes:
 
-For least-squares loss functions, the hessian of the loss function *L* is simply an identity matrix. In this case, we do not need to calculate the hessian-vector products, which saves some computational effort. The included code assumes by default  that the loss function is a least-squared problem. This can be switched off by setting the parameter **_squared_loss_ = False** when initializing the optimizer.
+1. For least-squares loss functions, the hessian of the loss function *L* is simply an identity matrix. In this case, we do not need to calculate the hessian-vector products, which saves some computational effort. The included code assumes by default  that the loss function is a least-squared problem. This can be switched off by setting the parameter **_squared_loss_ = False** when initializing the optimizer.
 
+2. When the input variable is not 1-D, it is difficult to keep track of the correct shapes for the various matrix-vector products. While this is certainly doable, I am avoiding this extra work for now by assuming that the input variable and predicted and measured data are all 1-D. It is simpler to just reshape the variable as necessary for any other calculation/analysis.
 
+3. For now, the optimizers support only a single variable, not a list of variables. If I want to use a list of variables, I would either create separate optimizers for each and use an alternating minimization algorithm, or use a single giant concatenated variable that contains the desired variable.
+
+4. For now, the tensorflow-based optimizers do not inherit from tf.train.Optimizer. I will look into this in the future.
+
+5. The optimizers require callable functions, instead of just the tensors, to calculate the predicted data and the loss value. This is primarily to accomodate the LMA algorithm where we need to ensure that we can calculate the loss value without affecting the second order matrix-vector products.

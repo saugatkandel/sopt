@@ -23,6 +23,12 @@ class MatrixFreeLinearOp(LinearOperator):
     
     def _shape(self) -> tf.TensorShape:
         return self._op_shape
+    
+    def _shape_tensor(self) -> None:
+        pass
+    
+    def _matmul(self) -> None:
+        pass
         
 
 

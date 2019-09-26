@@ -5,8 +5,8 @@
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
-from examples.utils import getSampleObj
-from optimizers.tensorflow import Curveball, LMA
+from sopt.examples.utils import getSampleObj
+from sopt.optimizers.tensorflow import Curveball, LMA
 
 
 
