@@ -27,6 +27,11 @@ The generalized Gauss-Newton matrix then takes the form
 
 with *J* is the Jacobian for the function *f*, and *H* the hessian for *L*. 
 
+Todo:
+
+The Tensorflow version of the algorithms is ahead of the Autograd versions. At some point, I need to update the Autograd 
+version so that the algorithms match up. 
+
 Notes:
 
 1. For least-squares loss functions, the hessian of the loss function *L* is simply an identity matrix. In this case, we do not need to calculate the hessian-vector products, which saves some computational effort. The included code assumes by default  that the loss function is a least-squared problem. This can be switched off by setting the parameter **_squared_loss_ = False** when initializing the optimizer.
