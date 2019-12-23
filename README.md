@@ -30,7 +30,7 @@ with *J* is the Jacobian for the function *f*, and *H* the hessian for *L*.
 Todo:
 
 The Tensorflow version of the algorithms is ahead of the Autograd versions. At some point, I need to update the Autograd 
-version so that the algorithms match up. 
+version so that the algorithms match up.. 
 
 Notes:
 
