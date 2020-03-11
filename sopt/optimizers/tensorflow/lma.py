@@ -76,8 +76,6 @@ class LMA(object):
 
         self._hessian_fn = hessian_fn
 
-        self._projected_gradient_linesearch = BackTrackingLineSearch()
-
         with tf.variable_scope(name):
             self._mu = tf.get_variable("lambda", dtype=tf.float32,
                                                    initializer=mu,
@@ -105,6 +103,7 @@ class LMA(object):
                                                              dtype=tf.int32, shape=[],
                                                              initializer=tf.zeros_initializer,
                                                              trainable=False)
+            self._projected_gradient_linesearch = BackTrackingLineSearch()
         # Set up the second order calculations to define matrix-free linear ops.
         self._setup_second_order()
 
@@ -127,7 +126,7 @@ class LMA(object):
                                       v_constant: tf.Tensor) -> tf.Tensor:
         predictions_this = self._predictions_fn(v_constant)
         loss_this = self._loss_fn(predictions_this)
-        
+
         if self._hessian_fn is None:
             hjvp = _hessian_vector_product(ys=[loss_this],
                                            xs=[predictions_this],

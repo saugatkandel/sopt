@@ -48,7 +48,6 @@ class BackTrackingLineSearch:
 
             # Look a little further
             alpha *= self.optimism
-
             alpha = tf.cond(alpha * descent_norm < self._machine_eps,
                             lambda: self.initial_stepsize / descent_norm,
                             lambda: alpha)
