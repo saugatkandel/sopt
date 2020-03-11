@@ -290,7 +290,7 @@ def _bias_add_grad_flops(graph, node):
 def _add_n_flops(graph, node):
     """Compute flops for AddN operation."""
     if not node.input:
-        return _zero_flops(graph, node)
+        return flops_registry._zero_flops(graph, node)
     in_shape = graph_util.tensor_shape_from_node_def_name(graph, node.input[0])
     in_shape.assert_is_fully_defined()
     if node.attr['T'].type == tf.complex64:
@@ -312,10 +312,12 @@ def _fft_2d_flops(graph, node):
     http://www.fftw.org/speed/method.html
     """
     if not node.input:
-        return _zero_flops(graph, node)
+        return flops_registry._zero_flops(graph, node)
     in_shape = graph_util.tensor_shape_from_node_def_name(graph, node.input[0])
     in_shape.assert_is_fully_defined()
     n = in_shape.num_elements()
+    if n == 0:
+        return flops_registry._zero_flops(graph, node)
     num_ops = np.int_(np.ceil(5 * n * np.log2(n)))
     return ops.OpStats("flops", num_ops)
 
@@ -327,10 +329,12 @@ def _ifft_2d_flops(graph, node):
     
     Using same value as in fft2d"""
     if not node.input:
-        return _zero_flops(graph, node)
+        return flops_registry._zero_flops(graph, node)
     in_shape = graph_util.tensor_shape_from_node_def_name(graph, node.input[0])
     in_shape.assert_is_fully_defined()
     n = in_shape.num_elements()
+    if n == 0:
+        return flops_registry._zero_flops(graph, node)
     num_ops = np.int_(np.ceil(5 * n * np.log2(n)))
     return ops.OpStats("flops", num_ops)
 

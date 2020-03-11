@@ -32,11 +32,12 @@ class tfPtychoReconsSim(metaclass=abc.ABCMeta):
                  probe_guess_cmplx_2d: Optional[np.ndarray] = None,
                  batch_size: int = 0,
                  validation_ndiffs: int = 0,
-                 loss_type: str = "gaussian") -> None:
+                 loss_type: str = "gaussian",
+                 precondition_probe: bool = False) -> None:
         
         self._ptsim = ptsim
-        
-        
+        self._precondition_probe = precondition_probe
+
         if obj_guess_cmplx_2d is None:
             n = self._ptsim._obj_npix
             obj_guess_cmplx_2d = (np.random.random((n,n)) * 
@@ -54,6 +55,8 @@ class tfPtychoReconsSim(metaclass=abc.ABCMeta):
             probe_guess = np.fft.fftshift(np.fft.ifft2(np.fft.fftshift(diffs_avg), norm='ortho'))
             self._probe_guess_flat = np.array([np.real(probe_guess),
                                                np.imag(probe_guess)], dtype='float32').flatten()
+        if precondition_probe:
+            self._probe_guess_flat /= self._ptsim._diffraction_moduli.max()
         
         self._probe_size = self._probe_guess_flat.size
         self._ndiffs = self._ptsim._ndiffs
@@ -160,6 +163,10 @@ class tfPtychoReconsSim(metaclass=abc.ABCMeta):
             batch_guess_mods = tf.reshape(tf.abs(batch_farfield_waves), [-1])
             #epsilons = tf.ones_like(batch_guess_mods) * (1e-3)**0.5
             #batch_guess_mods_new = tf.where(batch_guess_mods > (1e-3)**0.5, batch_guess_mods, epsilons)
+
+            if self._precondition_probe:
+                batch_guess_mods *= self._ptsim._diffraction_moduli.max()
+
         return batch_guess_mods
     
     def _getLoss(self, 
@@ -248,16 +255,22 @@ class tfPtychoReconsSim(metaclass=abc.ABCMeta):
             debug_output: bool = True,
             debug_output_epoch_frequency: int = 10,
             disable_progress_bar=False, 
-            manual_assign=False) -> None:
+            manual_assign=False,
+            obj_clip:bool = True) -> None:
         
         epochs_this = 0
         index = len(self.data)
         for i in tqdm(range(max_iters), disable=disable_progress_bar):
             ix = index + i
-            
-            lossval, _ = self.session.run([self._optparams.training_loss_tensor, 
-                                           self._optparams.minimize_op])
-            self.session.run(self._obj_clip_op)
+
+            try:
+                lossval, _ = self.session.run([self._optparams.training_loss_tensor,
+                                               self._optparams.minimize_op])
+            except tf.errors.InvalidArgumentError:
+                raise ArithmeticError("function update too small")
+
+            if obj_clip:
+                self.session.run(self._obj_clip_op)
             if not manual_assign:
                 _ = self.session.run(self._assign_op)
             self.data.loc[ix, 'loss'] = lossval
@@ -370,27 +383,32 @@ class CurveballPhaseRetriever(tfPtychoReconsSim):
 
 
 class LMAPhaseRetriever(tfPtychoReconsSim):
-    def setOptimizingParams(self):
-        if self._poisson_loss:
+    def setOptimizingParams(self,
+                            cg_tol: float=1e-5,
+                            max_cg_iter: int=10,
+                            grad_norm_reg_pow: int=0):
+        if self._loss_type in ["poisson", "poisson_surrogate"]:
             loss_hessian_fn = self._training_loss_hessian_fn
             squared_loss = False
         else:
             loss_hessian_fn = None
             squared_loss = True
-        
+
         size = self._batch_train_mods.shape.as_list()[0]
-        
+
         with self.graph.as_default():
             self._optparams.optimizer = LMA(input_var=self._tf_var,
-                                      predictions_fn=self._training_predictions_fn, 
-                                      loss_fn=self._training_loss_fn,
-                                      name='opt',
-                                      hessian_fn=loss_hessian_fn,
-                                      squared_loss=squared_loss,
-                                      max_cg_iter=10)
+                                            predictions_fn=self._training_predictions_fn,
+                                            loss_fn=self._training_loss_fn,
+                                            name='opt',
+                                            hessian_fn=loss_hessian_fn,
+                                            squared_loss=squared_loss,
+                                            max_cg_iter=max_cg_iter,
+                                            min_cg_tol=cg_tol,
+                                            grad_norm_reg_pow=grad_norm_reg_pow)
             self._optparams.minimize_op = self._optparams.optimizer.minimize()
-            
-            self._optparams.training_loss_tensor = self._optparams.optimizer._loss_fn_tensor
+
+            self._optparams.training_loss_tensor = self._optparams.optimizer._loss_t
         self._optimizers_defined = True
 
 

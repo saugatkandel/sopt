@@ -439,22 +439,22 @@ class LMAPhaseRetriever(tfNearFieldPtychoReconsSim):
         
         with self.graph.as_default():
             self._optparams.obj_optimizer = LMA(input_var=self._tf_obj,
-                                      predictions_fn=self._training_predictions_as_obj_fn, 
-                                      loss_fn=self._training_loss_fn,
-                                      damping_factor=damping_factor_obj,
-                                      damping_update_factor=damping_update_factor_obj,
-                                      name='obj_opt')
+                                                predictions_fn=self._training_predictions_as_obj_fn,
+                                                loss_fn=self._training_loss_fn,
+                                                damping_factor=damping_factor_obj,
+                                                damping_expansion=damping_update_factor_obj,
+                                                name='obj_opt')
             self._optparams.obj_minimize_op = self._optparams.obj_optimizer.minimize()
             
             if self._probe_recons:
-                self._optparams.probe_optimizer = LMA(input_var=self._tf_probe, 
-                                            predictions_fn=self._training_predictions_as_probe_fn, 
-                                            loss_fn=self._training_loss_fn,
-                                            damping_factor=damping_factor_probe,
-                                            damping_update_factor=damping_update_factor_probe,
-                                            name='probe_opt')
+                self._optparams.probe_optimizer = LMA(input_var=self._tf_probe,
+                                                      predictions_fn=self._training_predictions_as_probe_fn,
+                                                      loss_fn=self._training_loss_fn,
+                                                      damping_factor=damping_factor_probe,
+                                                      damping_expansion=damping_update_factor_probe,
+                                                      name='probe_opt')
                 self._optparams.probe_minimize_op = self._optparams.probe_optimizer.minimize()
             
-            self._optparams.training_loss_tensor = self._optparams.obj_optimizer._loss_fn_tensor
+            self._optparams.training_loss_tensor = self._optparams.obj_optimizer._loss_t
         self._optimizers_defined = True
 
