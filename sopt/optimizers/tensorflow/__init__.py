@@ -3,7 +3,7 @@
 
 
 from .curveball import Curveball
-from .lma import ProjectedLMA, LMA
+from .lma import LMA
 
-__all__ = ["Curveball", "LMA", "ProjectedLMA"]
+__all__ = ["Curveball", "LMA"]
 
