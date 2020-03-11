@@ -8,7 +8,7 @@ import abc
 import tensorflow as tf
 from typing import Optional, Callable
 from sopt.examples.utils import PtychographySimulation
-from sopt.optimizers.tensorflow import Curveball, LMA, RegularizedLMA
+from sopt.optimizers.tensorflow import Curveball, LMA
 from skimage.feature import register_translation
 from tqdm import tqdm_notebook as tqdm
 from pandas import DataFrame
@@ -92,7 +92,8 @@ class tfPtychoReconsSim(metaclass=abc.ABCMeta):
         with self.graph.as_default():
             with tf.device('/gpu:0'):
                 self._tf_obj = tf.get_variable('obj_flat', dtype='float32',
-                                               initializer=self._obj_guess_flat)
+                                               initializer=self._obj_guess_flat,
+                                               constraint=self._getObjConstraint)
                 self._tf_probe = tf.get_variable('probe_flat', dtype='float32',
                                                  initializer=self._probe_guess_flat)
                 
@@ -110,7 +111,6 @@ class tfPtychoReconsSim(metaclass=abc.ABCMeta):
             
             self._tf_obj_padded_cmplx = self._getComplexPaddedObj(self._tf_obj)
             self._tf_probe_cmplx = self._getComplexProbe(self._tf_probe)
-            self._obj_clip_op = self._getClipOp()
                 
     
     def _initDataSet(self) -> None:
@@ -219,14 +219,13 @@ class tfPtychoReconsSim(metaclass=abc.ABCMeta):
                                                                        validation_diff_mods)
     
     
-    def _getClipOp(self, max_abs: float=1.0) -> None:
+    def _getObjConstraint(self, obj_flat: tf.Tensor, max_abs: float=1.0) -> None:
         with self.graph.as_default():
             with tf.name_scope('obj_clip'):
-                obj_reshaped = tf.reshape(self._tf_obj, [2, -1])
+                obj_reshaped = tf.reshape(obj_flat, [2, -1])
                 obj_clipped = tf.clip_by_norm(obj_reshaped, max_abs, axes=[0])
                 obj_clipped_reshaped = tf.reshape(obj_clipped, [-1])
-                clipped = tf.assign(self._tf_obj, obj_clipped_reshaped, name='clip_op')
-        return clipped
+        return obj_clipped_reshaped
     
     @abc.abstractmethod
     def setOptimizingParams(self, *args, **kwargs):
@@ -259,40 +258,20 @@ class tfPtychoReconsSim(metaclass=abc.ABCMeta):
             debug_output: bool = True,
             debug_output_epoch_frequency: int = 10,
             probe_fixed_epochs=0,
-            obj_clip:bool = False,
             disable_progress_bar=False, 
             manual_assign=False) -> None:
         
         epochs_this = 0
         index = len(self.data)
-        for i in tqdm(range(max_iters), disable=disable_progress_bar):
+        for i in range(max_iters):#, disable=disable_progress_bar):
             ix = index + i
-            
-            lma_stop_conditions = 0
-            lma_stop_trues = 0
-            
+
             if self._probe_recons and epochs_this >= probe_fixed_epochs: 
-                lma_stop_conditions += 1
-                try:
-                    _ = self.session.run(self._optparams.probe_minimize_op)
-                except tf.errors.InvalidArgumentError:
-                    lma_stop_trues += 1
-                    pass
+                _ = self.session.run(self._optparams.probe_minimize_op)
                     
-            try:
-                lma_stop_conditions += 1
-                self.session.run(self._optparams.obj_minimize_op)
-                if obj_clip:
-                    self.session.run(self._obj_clip_op)
-            except tf.errors.InvalidArgumentError:
-                lma_stop_trues += 1
-                pass
-            
-            if lma_stop_trues == lma_stop_conditions:
-                raise ArithmeticError("function update too small.")
+            self.session.run(self._optparams.obj_minimize_op)
             lossval = self.session.run(self._optparams.training_loss_tensor)
-            
-            
+
             if not manual_assign:
                 _ = self.session.run(self._assign_op)
             self.data.loc[ix, 'loss'] = lossval
@@ -438,12 +417,7 @@ class CurveballPhaseRetriever(tfPtychoReconsSim):
 
 
 class LMAPhaseRetriever(tfPtychoReconsSim):
-    def setOptimizingParams(self, 
-                            damping_factor_obj: float=1.0,
-                            damping_update_factor_obj: float=2/3,
-                            damping_factor_probe: float=1.0,
-                            damping_update_factor_probe: float=2/3,
-                            max_cg_iter: int = 50):
+    def setOptimizingParams(self):
         
         if self._loss_type in ["poisson", "poisson_surrogate"]:
             loss_hessian_fn = self._training_loss_hessian_fn
@@ -456,11 +430,8 @@ class LMAPhaseRetriever(tfPtychoReconsSim):
             self._optparams.obj_optimizer = LMA(input_var=self._tf_obj,
                                                 predictions_fn=self._training_predictions_as_obj_fn,
                                                 loss_fn=self._training_loss_fn,
-                                                damping_factor=damping_factor_obj,
-                                                damping_expansion=damping_update_factor_obj,
                                                 name='obj_opt',
                                                 hessian_fn=loss_hessian_fn,
-                                                max_cg_iter=max_cg_iter,
                                                 assert_tolerances=False)
             self._optparams.obj_minimize_op = self._optparams.obj_optimizer.minimize()
             
@@ -468,57 +439,12 @@ class LMAPhaseRetriever(tfPtychoReconsSim):
                 self._optparams.probe_optimizer = LMA(input_var=self._tf_probe,
                                                       predictions_fn=self._training_predictions_as_probe_fn,
                                                       loss_fn=self._training_loss_fn,
-                                                      damping_factor=damping_factor_probe,
-                                                      damping_expansion=damping_update_factor_probe,
                                                       name='probe_opt',
                                                       hessian_fn=loss_hessian_fn,
-                                                      max_cg_iter=max_cg_iter,
                                                       assert_tolerances=False)
                 self._optparams.probe_minimize_op = self._optparams.probe_optimizer.minimize()
             
             self._optparams.training_loss_tensor = self._optparams.obj_optimizer._loss_t
         self._optimizers_defined = True
-
-
-class RegLMAPhaseRetriever(tfPtychoReconsSim):
-    def setOptimizingParams(self,
-                            damping_factor_obj: float = 1.0,
-                            damping_update_factor_obj: float = 2 / 3,
-                            damping_factor_probe: float = 1.0,
-                            damping_update_factor_probe: float = 2 / 3,
-                            max_cg_iter: int = 100):
-
-        if self._loss_type in ["poisson", "poisson_surrogate"]:
-            loss_hessian_fn = self._training_loss_hessian_fn
-        else:
-            loss_hessian_fn = None
-
-        size = self._batch_train_mods.shape.as_list()[0]
-
-        with self.graph.as_default():
-            self._optparams.obj_optimizer = RegularizedLMA(input_var=self._tf_obj,
-                                                predictions_fn=self._training_predictions_as_obj_fn,
-                                                loss_fn=self._training_loss_fn,
-                                                name='obj_opt',
-                                                hessian_fn=loss_hessian_fn,
-                                                min_cg_tol=1e-1,
-                                                max_cg_iter=max_cg_iter,
-                                                assert_tolerances=False)
-            self._optparams.obj_minimize_op = self._optparams.obj_optimizer.minimize()
-
-            if self._probe_recons:
-                self._optparams.probe_optimizer = RegularizedLMA(input_var=self._tf_probe,
-                                                      predictions_fn=self._training_predictions_as_probe_fn,
-                                                      loss_fn=self._training_loss_fn,
-                                                      name='probe_opt',
-                                                      hessian_fn=loss_hessian_fn,
-                                                      max_cg_iter=max_cg_iter,
-                                                      assert_tolerances=False)
-                self._optparams.probe_minimize_op = self._optparams.probe_optimizer.minimize()
-
-            self._optparams.training_loss_tensor = self._optparams.obj_optimizer._loss_t
-        self._optimizers_defined = True
-
-
 
 
