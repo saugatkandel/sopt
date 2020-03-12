@@ -30,19 +30,19 @@ class LMA(object):
                  name: str,
                  mu: float = 1e-4,
                  grad_norm_regularization_power: float = 1.0,
-                 mu_contraction: float = 2 / 3,
+                 mu_contraction: float = 0.25,
                  update_cond_thres_low: float = 0.25,
                  update_cond_thres_high: float = 0.75,
                  mu_thres_low: float = 1e-8,
                  mu_thres_high: float = 1e8,
                  max_mu_linesearch_iters: int = None,
                  max_cg_iter: int = 50,
-                 min_cg_tol: float = 1e-1,  # Force CG iterations to have at least this tolerance.s
                  ftol: float = 1e-6,
                  gtol: float = 1e-6,
                  min_reduction_ratio: float = 1e-4,
                  hessian_fn: Callable[[tf.Tensor], tf.Tensor]= None,
-                 assert_tolerances: bool = True) -> None:
+                 min_cg_tol: float = None,  # Force CG iterations to have at least this tolerance.s
+                 assert_tolerances: bool = False) -> None:
 
         self._name = name
         self._input_var = input_var
@@ -68,7 +68,9 @@ class LMA(object):
             self._max_linesearch_iters = np.ceil(-np.log(range) / np.log(mu_contraction)).astype('int32')
 
         self._max_cg_iter = max_cg_iter
-        self._min_cg_tol = min_cg_tol
+
+        # The recommended value from Nocedal and Wright is 0.5
+        self._min_cg_tol = 0.5 if min_cg_tol is None else min_cg_tol
 
         self._min_reduction_ratio = min_reduction_ratio
         self._ftol, self._gtol = self._check_tolerance(ftol, gtol)
@@ -258,12 +260,13 @@ class LMA(object):
             linear_b = -self._grads
 
             grad_norm = tf.linalg.norm(self._grads)
-            this_forcing_eta = tf.reduce_min([0.5, grad_norm ** 0.5, self._min_cg_tol])
+            this_forcing_eta = tf.minimum(grad_norm ** 0.5, self._min_cg_tol)
 
-            grad_norm_regularization = tf.linalg.norm(self._loss_grads) ** self._grad_norm_regularization_power
+            grad_norm_regularization = tf.linalg.norm(self._grads) ** self._grad_norm_regularization_power
 
             def _damping_linesearch_step(state: LMState):
                 damping = state.mu_new * grad_norm_regularization
+
                 linear_ax = MatrixFreeLinearOp(lambda h: jhjvp_fn_l_h(damping, h, state.v_const),
                                                tf.TensorShape((self._input_var.shape.dims[0],
                                                                self._input_var.shape.dims[0])))
@@ -281,17 +284,34 @@ class LMA(object):
                 ratio = tf.cond(tf.math.not_equal(pred_reduction, 0.),
                                 lambda: actual_reduction / pred_reduction,
                                 lambda: 0.)
-                f1 = lambda: tf.constant(1.0 / self._mu_contraction)
-                f2 = lambda: tf.constant(self._mu_contraction)
-                f3 = lambda: tf.constant(1.0)
+                f1 = lambda: tf.minimum(state.mu_new / self._mu_contraction, self._mu_thres_high)
+                f2 = lambda: tf.maximum(state.mu_new * self._mu_contraction, self._mu_thres_low)
+                f3 = lambda: state.mu_new
 
-                update_factor = tf.case({tf.less(ratio, self._update_cond_thres_low):f1,
-                                         tf.greater(ratio, self._update_cond_thres_high):f2},
-                                        default=f3, exclusive=True)
 
-                mu_new = tf.clip_by_value(state.mu_new * update_factor,
-                                          self._mu_thres_low,
-                                          self._mu_thres_high)
+                # Using updates from "On a New Updating Rule of the Levenberg–Marquardt Parameter"
+                case1 = ratio < self._min_reduction_ratio
+                case2 = (ratio >= self._min_reduction_ratio) & (ratio < self._update_cond_thres_low)
+                case3 = (ratio > self._update_cond_thres_high)
+                #case2 = ((ratio > self._min_reduction_ratio)
+                #         & (grad_norm < (self._update_cond_thres_low / state.mu_new)))
+
+                #case3 = ((ratio > self._min_reduction_ratio)
+                #         & (grad_norm > (self._update_cond_thres_high / state.mu_new)))
+
+                #with tf.control_dependencies([tf.print('ratio', ratio, case1, case2, case3, state.mu_new)]):
+                mu_new = tf.case({case1: f1, case2: f1, case3: f2}, default=f3, exclusive=True)
+
+                #with tf.control_dependencies([tf.print('ratio', ratio,
+                #                                       'loss_old', self._loss_before_update,
+                #                                       'loss_new', loss_new)]):
+                #update_factor = tf.case({tf.less(ratio, self._update_cond_thres_low):f1,
+                #                         tf.greater(ratio, self._update_cond_thres_high):f2},
+                #                       default=f3, exclusive=True)
+
+                #mu_new = tf.clip_by_value(state.mu_new * update_factor,
+                #                          self._mu_thres_low,# / grad_norm_regularization,
+                #                          self._mu_thres_high)# / grad_norm_regularization)
 
                 state_new = state._replace(mu_old=state.mu_new,
                                            mu_new=mu_new,
@@ -348,13 +368,18 @@ class LMA(object):
                 assert_op = tf.assert_greater(lmstate.converged, 0, summarize=1,
                                               message=message_str)
                 assert_ops.append(assert_op)
+
+            no_update_condition = ((grad_converged > 0)
+                                   | (lmstate.ratio < self._min_reduction_ratio))
             with tf.control_dependencies(assert_ops):
                 if self._input_var.constraint is not None:
-                    updated_var = tf.cond(grad_converged > 0,
+                    updated_var = tf.cond(no_update_condition,
                                           lambda: self._input_var,
                                           lambda: self._applyProjectedGradient(lmstate))
                 else:
-                    updated_var = self._input_var + dx_new
+                    updated_var = tf.cond(no_update_condition,
+                                          lambda: self._input_var,
+                                          lambda: self._input_var + dx_new)
             update_ops = [tf.assign(self._mu, lmstate.mu_new),
                           tf.assign(self._update_var, dx_new),
                           tf.assign(self._input_var, updated_var)]
