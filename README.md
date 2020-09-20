@@ -45,16 +45,16 @@ If I want to use a list of variables, I would either create separate optimizers 
 5. The optimizers require callable functions, instead of just the tensors, 
 to calculate the predicted data and the loss value. 
 
+6. To see example usages, check the *tests* module.
+
+**Warning: deprecated**:
+1) the Autograd code.
+2) the Tensorflow 1.x codes
+3) the *examples* and the *benchmarks*.
+
 ***Todo***:
 1) Consistent naming for `loss`, and `objective`. 
 
-***Warning***: 
-1) the autograd code and TensorFlow 1.x codes are deprecated. Autograd code is 100% out of date. 
-The TF1.x code is not actively supported. Since it is difficult to estimate the *flops* from the 
-dynamic graph, the *benchmarks* are also deprecated. 
-
-2) The included ptychography *examples* do not work right now. 
-However, the included *tests* should be working fine.  
 
 ***References***:
 
