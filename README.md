@@ -1,17 +1,15 @@
 # AD-based Second Order Optimization
 
-Tensorflow reverse-mode optimization routines that use a damped Gauss-Newton matrix. The methods included are:
+Tensorflow reverse-mode optimization routines that use a damped Generalized Gauss-Newton matrix. The methods included are:
 
 1) Levenberg-Marquardt
 2) Curveball
 3) Nonlinear conjugate gradient (PR)
 4) Backtracking and adaptive linesearch methods
-5) An interface to the scipy optimizer class. 
+5) An interface to the scipy optimizer class for full 
 
 
-The code here is primarily based on the references: 
-
-Basics:
+*Basics*:
 
 We can write an optimization problem with *m* parameters and *n* data points as a composition of the "model"
 
