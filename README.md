@@ -9,23 +9,23 @@ Tensorflow reverse-mode optimization routines that use a damped Generalized Gaus
 5) An interface to the scipy optimizer class for full 
 
 
-*Basics*:
+**Basics**:
 
 We can write an optimization problem with *m* parameters and *n* data points as a composition of the "model"
 
-<img src="https://latex.codecogs.com/svg.latex?\Large&space;f:\mathbb{R}^m\rightarrow\mathbb{R}^n" title="\Large Model" />
+<img src="https://latex.codecogs.com/svg.latex?\small&space;f:\mathbb{R}^m\rightarrow\mathbb{R}^n" title="\Large Model" />
 
 and the "loss":
 
-<img src="https://latex.codecogs.com/svg.latex?\Large&space;L:\mathbb{R}^n\rightarrow\mathbb{R}." title="\Large Loss" />
+<img src="https://latex.codecogs.com/svg.latex?\small&space;L:\mathbb{R}^n\rightarrow\mathbb{R}." title="\Large Loss" />
 
 The generalized Gauss-Newton matrix then takes the form  
 
-<img src="https://latex.codecogs.com/svg.latex?\Large&space;G=J^T_f\cdot{H}_L\cdot{J}_f" title="\Large Gauss-Newton" />
+<img src="https://latex.codecogs.com/svg.latex?\small&space;G=J^T_f\cdot{H}_L\cdot{J}_f" title="\Large Gauss-Newton" />
 
 with *J* is the Jacobian for the function *f*, and *H* the hessian for *L*. 
 
-Notes:
+**Notes**:
 
 1. We can either manually supply the hessian of the loss function (if the hessian is a diagonal matrix), 
 or have the optimizers calculate the hessian-vector products internally. 
