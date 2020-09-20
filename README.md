@@ -2,7 +2,7 @@
 
 Tensorflow reverse-mode optimization routines that use a damped Generalized Gauss-Newton matrix. The methods included are:
 
-1) Levenberg-Marquardt
+1) Levenberg-Marquardt with projected gradient for convex constraints
 2) Curveball
 3) Nonlinear conjugate gradient (PR)
 4) Backtracking and adaptive linesearch methods
