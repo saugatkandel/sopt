@@ -6,7 +6,7 @@ import numpy as np
 import abc
 import tensorflow as tf
 from typing import Optional
-from sopt.examples.utils import NearFieldPtychographySimulation
+from sopt.examples.deprecated.utils import NearFieldPtychographySimulation
 from sopt.optimizers.tensorflow import Curveball, LMA
 from pandas import DataFrame
 from skimage.feature import register_translation
