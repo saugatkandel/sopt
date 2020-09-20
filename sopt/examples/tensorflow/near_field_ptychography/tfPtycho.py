@@ -3,10 +3,9 @@
 
 
 import numpy as np
-import scipy
 import abc
 import tensorflow as tf
-from typing import Optional, Callable
+from typing import Optional
 from sopt.examples.utils import NearFieldPtychographySimulation
 from sopt.optimizers.tensorflow import Curveball, LMA
 from pandas import DataFrame

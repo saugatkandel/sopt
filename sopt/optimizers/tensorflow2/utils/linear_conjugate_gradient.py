@@ -1,9 +1,9 @@
-import tensorflow.compat.v1 as tf
-#from tensorflow.compat.v1.linalg import LinearOperator
 from tensorflow.linalg import LinearOperator
+import tensorflow as tf
 from typing import Callable, Optional, NamedTuple
 
 __all__ = ['MatrixFreeLinearOp', 'conjugate_gradient']
+
 
 class MatrixFreeLinearOp(LinearOperator):
     def __init__(self,
@@ -11,7 +11,7 @@ class MatrixFreeLinearOp(LinearOperator):
                  shape: tf.TensorShape) -> None:
         self._operator = operator
         self._op_shape = shape
-        super().__init__(dtype=tf.float32)
+        super().__init__(dtype=tf.float32, is_self_adjoint=True, is_positive_definite=True)
 
     def _matvec(self,
                 x: tf.Tensor,
@@ -28,8 +28,19 @@ class MatrixFreeLinearOp(LinearOperator):
         pass
 
 
+# ephemeral class holding CG state.
+class CGState(NamedTuple):
+    i: tf.Tensor
+    x: tf.Tensor
+    r: tf.Tensor
+    p: tf.Tensor
+    gamma: tf.Tensor
+    r_check: tf.Tensor
+
+
 # This is adapted from
 # https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/solvers/python/ops/linear_equations.py
+@tf.function
 def conjugate_gradient(operator: LinearOperator,
                        rhs: tf.Tensor,
                        x: Optional[tf.Tensor] = None,
@@ -92,24 +103,12 @@ def conjugate_gradient(operator: LinearOperator,
 
     """
 
-    # ephemeral class holding CG state.
-    class CGState(NamedTuple):
-        i: tf.Tensor
-        x: tf.Tensor
-        r: tf.Tensor
-        p: tf.Tensor
-        gamma: tf.Tensor
-        r_check: tf.Tensor
-
-    def stopping_criterion(state):
+    def stopping_criterion(state: CGState) -> tf.Tensor:
         with tf.name_scope('cg_cond'):
             output = tf.linalg.norm(state.r) > tol
-            #with tf.control_dependencies([tf.print('r', tf.linalg.norm(state.r), tol)]):
-            #output = tf.logical_and(tf.linalg.norm(state.r) > tol, state.r_check < 1e-5)
-
         return output
 
-    def cg_step(state):  # pylint: disable=missing-docstring
+    def cg_step(state: CGState) -> CGState:  # pylint: disable=missing-docstring
         with tf.name_scope('cg_body'):
             z = operator.matvec(state.p)
             alpha = state.gamma / tf.tensordot(state.p, z, 1)
@@ -119,12 +118,6 @@ def conjugate_gradient(operator: LinearOperator,
             if preconditioner is None:
                 gamma = tf.tensordot(r, r, 1)
                 beta = gamma / state.gamma
-                print_op = tf.print('i', state.i, 'alpha', alpha,
-                                    'beta', beta, 'gamma', gamma, 'state_gamma', state.gamma,
-                                    'r', tf.linalg.norm(state.r),
-                                    'r_check', r_check,
-                                    'tolerance', tf.linalg.norm(r) / tf.linalg.norm(r0))
-                #with tf.control_dependencies([print_op]):
                 p = r + beta * state.p
             else:
                 q = preconditioner.matvec(r)
@@ -132,18 +125,19 @@ def conjugate_gradient(operator: LinearOperator,
                 beta = gamma / state.gamma
                 p = q + beta * state.p
 
-            output = CGState(i=state.i + 1, x=x,#tf.debugging.check_numerics(x, message='Invalid x in CG iterations.'),
-                             r=r,#tf.debugging.check_numerics(r, message='Invalid r in CG iterations.'),
-                             p=p,#tf.debugging.check_numerics(p, message='Invalid p in CG iterations.'),
+            output = CGState(i=state.i + 1, x=x,
+                             # tf.debugging.check_numerics(x, message='Invalid x in CG iterations.'),
+                             r=r,  # tf.debugging.check_numerics(r, message='Invalid r in CG iterations.'),
+                             p=p,  # tf.debugging.check_numerics(p, message='Invalid p in CG iterations.'),
                              gamma=gamma,
                              r_check=r_check)
-        return output
+        return [output]
 
     with tf.name_scope(name):
         with tf.name_scope('cg_init'):
             if x is None:
                 x = tf.zeros_like(rhs)
-                #r0 = tf.debugging.check_numerics(rhs, 'input rhs invalid')
+                # r0 = tf.debugging.check_numerics(rhs, 'input rhs invalid')
                 r0 = rhs
             else:
                 r0 = rhs - operator.matvec(x)
@@ -153,13 +147,13 @@ def conjugate_gradient(operator: LinearOperator,
                 p0 = preconditioner.matvec(r0)
             # gamma0 = tf.reduce_sum(r0 * p0)#
             gamma0 = tf.tensordot(r0, p0, 1)
-            tol *= tf.linalg.norm(rhs)#r0)
+            tol *= tf.linalg.norm(rhs)  # r0)
             r_check0 = 0.
-        state = CGState(i=tf.constant(0, dtype=tf.int32), x=x, r=r0, p=p0, gamma=gamma0, r_check=r_check0)
-        state = tf.while_loop(stopping_criterion, cg_step,
-                              [state], maximum_iterations=max_iter,
-                              back_prop=False,
-                              name='cg_while')
+        state = CGState(i=tf.constant(0, dtype=tf.int32), x=x, r=r0,
+                        p=p0, gamma=gamma0, r_check=r_check0)
+        [state] = tf.nest.map_structure(tf.stop_gradient, tf.while_loop(cond=stopping_criterion, body=cg_step,
+                                                                        loop_vars=[state], maximum_iterations=max_iter,
+                                                                        name='cg_while'))
         return CGState(
             state.i,
             x=tf.squeeze(state.x),

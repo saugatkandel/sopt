@@ -3,14 +3,12 @@
 
 
 import numpy as np
-import scipy
 import abc
 import tensorflow as tf
-from typing import Optional, Callable
+from typing import Optional
 from sopt.examples.utils import PtychographySimulation
 from sopt.optimizers.tensorflow import Curveball, LMA
 from skimage.feature import register_translation
-from tqdm import tqdm_notebook as tqdm
 from pandas import DataFrame
 import matplotlib.pyplot as plt
 
@@ -386,29 +384,29 @@ class CurveballPhaseRetriever(tfPtychoReconsSim):
             loss_hessian_fn = None
             squared_loss = True
         with self.graph.as_default():
-            self._optparams.obj_optimizer = Curveball(input_var=self._tf_obj, 
-                                            predictions_fn=self._training_predictions_as_obj_fn, 
-                                            loss_fn=self._training_loss_fn,
-                                            damping_factor=damping_factor_obj,
-                                            damping_update_factor=damping_update_factor_obj,
-                                            damping_update_frequency=damping_update_frequency_obj,
-                                            update_cond_threshold_low=update_cond_threshold_low,
-                                            update_cond_threshold_high=update_cond_threshold_high,
-                                            name='obj_opt',
-                                            hessian_fn=loss_hessian_fn,
-                                            squared_loss=squared_loss)
+            self._optparams.obj_optimizer = Curveball(input_var=self._tf_obj,
+                                                      predictions_fn=self._training_predictions_as_obj_fn,
+                                                      loss_fn=self._training_loss_fn,
+                                                      damping_factor=damping_factor_obj,
+                                                      damping_update_factor=damping_update_factor_obj,
+                                                      damping_update_frequency=damping_update_frequency_obj,
+                                                      update_cond_threshold_low=update_cond_threshold_low,
+                                                      update_cond_threshold_high=update_cond_threshold_high,
+                                                      name='obj_opt',
+                                                      diag_hessian_fn=loss_hessian_fn,
+                                                      squared_loss=squared_loss)
             self._optparams.obj_minimize_op = self._optparams.obj_optimizer.minimize()
             
             if self._probe_recons:
-                self._optparams.probe_optimizer = Curveball(input_var=self._tf_probe, 
-                                                predictions_fn=self._training_predictions_as_probe_fn, 
-                                                loss_fn=self._training_loss_fn,
-                                                damping_factor=damping_factor_probe,
-                                                damping_update_factor=damping_update_factor_probe,
-                                                damping_update_frequency=damping_update_frequency_probe,
-                                                name='probe_opt',
-                                                hessian_fn=loss_hessian_fn,
-                                                squared_loss=squared_loss)
+                self._optparams.probe_optimizer = Curveball(input_var=self._tf_probe,
+                                                            predictions_fn=self._training_predictions_as_probe_fn,
+                                                            loss_fn=self._training_loss_fn,
+                                                            damping_factor=damping_factor_probe,
+                                                            damping_update_factor=damping_update_factor_probe,
+                                                            damping_update_frequency=damping_update_frequency_probe,
+                                                            name='probe_opt',
+                                                            diag_hessian_fn=loss_hessian_fn,
+                                                            squared_loss=squared_loss)
                 self._optparams.probe_minimize_op = self._optparams.probe_optimizer.minimize()
             
             self._optparams.training_loss_tensor = self._optparams.obj_optimizer._loss_fn_tensor
@@ -431,7 +429,7 @@ class LMAPhaseRetriever(tfPtychoReconsSim):
                                                 predictions_fn=self._training_predictions_as_obj_fn,
                                                 loss_fn=self._training_loss_fn,
                                                 name='obj_opt',
-                                                hessian_fn=loss_hessian_fn,
+                                                diag_hessian_fn=loss_hessian_fn,
                                                 assert_tolerances=False)
             self._optparams.obj_minimize_op = self._optparams.obj_optimizer.minimize()
             
@@ -440,7 +438,7 @@ class LMAPhaseRetriever(tfPtychoReconsSim):
                                                       predictions_fn=self._training_predictions_as_probe_fn,
                                                       loss_fn=self._training_loss_fn,
                                                       name='probe_opt',
-                                                      hessian_fn=loss_hessian_fn,
+                                                      diag_hessian_fn=loss_hessian_fn,
                                                       assert_tolerances=False)
                 self._optparams.probe_minimize_op = self._optparams.probe_optimizer.minimize()
             

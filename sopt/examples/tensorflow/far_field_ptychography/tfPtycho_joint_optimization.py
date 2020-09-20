@@ -3,10 +3,9 @@
 
 
 import numpy as np
-import scipy
 import abc
 import tensorflow as tf
-from typing import Optional, Callable
+from typing import Optional
 from sopt.examples.utils import PtychographySimulation
 from sopt.optimizers.tensorflow import Curveball, LMA
 from skimage.feature import register_translation
@@ -369,12 +368,12 @@ class CurveballPhaseRetriever(tfPtychoReconsSim):
             loss_hessian_fn = None
             squared_loss = True
         with self.graph.as_default():
-            self._optparams.optimizer = Curveball(input_var=self._tf_var, 
-                                            predictions_fn=self._training_predictions_fn, 
-                                            loss_fn=self._training_loss_fn,
-                                            name='opt',
-                                            hessian_fn=loss_hessian_fn,
-                                            squared_loss=squared_loss)
+            self._optparams.optimizer = Curveball(input_var=self._tf_var,
+                                                  predictions_fn=self._training_predictions_fn,
+                                                  loss_fn=self._training_loss_fn,
+                                                  name='opt',
+                                                  diag_hessian_fn=loss_hessian_fn,
+                                                  squared_loss=squared_loss)
             self._optparams.minimize_op = self._optparams.optimizer.minimize()
             
             self._optparams.training_loss_tensor = self._optparams.optimizer._loss_fn_tensor
@@ -401,7 +400,7 @@ class LMAPhaseRetriever(tfPtychoReconsSim):
                                             predictions_fn=self._training_predictions_fn,
                                             loss_fn=self._training_loss_fn,
                                             name='opt',
-                                            hessian_fn=loss_hessian_fn,
+                                            diag_hessian_fn=loss_hessian_fn,
                                             squared_loss=squared_loss,
                                             max_cg_iter=max_cg_iter,
                                             min_cg_tol=cg_tol,

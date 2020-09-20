@@ -120,9 +120,9 @@ class Curveball(object):
         
         beta = m_b[0]
         rho = -m_b[1]
-        
+
         M = -0.5 * m_b @ b
-        
+
         self._z = rho * self._z - beta * deltaz
         self._input_var = self._input_var + self._alpha * self._z
         return loss_before_update, M
@@ -134,7 +134,7 @@ class Curveball(object):
         loss_after_update = self._loss_fn(self._predictions_fn(self._input_var))
         actual_loss_change = loss_after_update - loss_before_update
         gamma = actual_loss_change / expected_quadratic_change
-        
+
         if gamma < self._update_cond_threshold_low:
             self._damping_factor = self._damping_factor / self._damping_update_factor
         elif gamma > self._update_cond_threshold_high:
@@ -148,9 +148,12 @@ class Curveball(object):
         loss_before_update, M = self._matrix_vector_updates()
         
         self._expected_quadratic_change = M
-        
+
+
         if self._iteration % self._damping_update_frequency == 0:
             self._damping_update(loss_before_update, M)
-        self._iteration += 1       
+
+        self._iteration += 1
+
         return self._input_var
 

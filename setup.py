@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(
-    name='second_order_phase_retrieval',
+    name='sopt',
     version='0.0.1',
     author='Saugat Kandel',
     author_email='saugat.kandel@u.northwestern.edu',
@@ -15,6 +15,6 @@ setup(
         "scipy",
         "matplotlib",
         "tensorflow",
-        "autograd"
+        #"autograd"
     ],
 )
