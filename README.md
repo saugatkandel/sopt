@@ -48,7 +48,7 @@ to calculate the predicted data and the loss value.
 **Warning: deprecated**:
 1) the Autograd code.
 2) the Tensorflow 1.x codes
-3) the *examples* and the *benchmarks*.
+3) the *examples* and the *benchmarks* modules.
 
 ***Todo***:
 1) Consistent naming for `loss`, and `objective`. 
