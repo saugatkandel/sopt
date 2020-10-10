@@ -6,7 +6,7 @@ Tensorflow reverse-mode optimization routines that use a damped Generalized Gaus
 2) Curveball
 3) Nonlinear conjugate gradient (PR)
 4) Backtracking and adaptive linesearch methods
-5) An interface to the scipy optimizer class for full 
+5) An interface to the scipy optimizer class for gradient based or full Newton-type algorithms.
 
 
 **Basics**:
