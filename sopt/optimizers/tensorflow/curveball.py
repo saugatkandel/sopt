@@ -3,13 +3,13 @@
 
 
 import numpy as np
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 from tensorflow.python.ops.gradients_impl import _hessian_vector_product
 from typing import Callable, Tuple
 from sopt.optimizers.tensorflow import AdaptiveLineSearch
 
 
-
+__all__ = ['Curveball', 'PreconditionedCurveball']
 
 ## This class is under construction. Attempt to chain the optimization step
 # and the damping parameter update step into a single step.

@@ -19,7 +19,7 @@ class BackTrackingLineSearch:
                  suff_decr: float = 1e-4,
                  initial_stepsize: float = 10.0,
                  stepsize_threshold_low: float = 1e-10,
-                 dtype: np.dtype = np.float32,
+                 dtype: str = 'float32',
                  maxiter: int = None,
                  name='backtracking_linesearch') -> None:
         self.contraction_factor = contraction_factor
@@ -39,8 +39,8 @@ class BackTrackingLineSearch:
             maxiter = np.inf
         self.maxiter = np.minimum(maxiter, machine_maxiter).astype('int32')
 
-        self._oldf0 = tf.Variable(-np.inf, dtype='float32', name='old_f0', trainable=False)
-        self._alpha = tf.Variable(0., dtype='float32', name='alpha', trainable=False)
+        self._oldf0 = tf.Variable(-np.inf, dtype=self._dtype, name='old_f0', trainable=False)
+        self._alpha = tf.Variable(0., dtype=self._dtype, name='alpha', trainable=False)
         self._variables = [self._oldf0, self._alpha]
 
     def reset(self):
@@ -119,7 +119,7 @@ class AdaptiveLineSearch:
                  suff_decr: float = 1e-4,
                  initial_stepsize: float = 10.0,
                  stepsize_threshold_low: float = 1e-10,
-                 dtype: np.dtype = np.float32,
+                 dtype: str = 'float32',
                  maxiter: int = None,
                  name='backtracking_linesearch') -> None:
         self.contraction_factor = contraction_factor
@@ -139,8 +139,8 @@ class AdaptiveLineSearch:
             maxiter = np.inf
         self.maxiter = np.minimum(maxiter, machine_maxiter).astype('int32')
 
-        self._alpha = tf.Variable(0., dtype='float32', name='alpha', trainable=False)
-        self._alpha_suggested = tf.Variable(0., dtype='float32', name='alpha_suggested', trainable=False)
+        self._alpha = tf.Variable(0., dtype=self._dtype, name='alpha', trainable=False)
+        self._alpha_suggested = tf.Variable(0., dtype=self._dtype, name='alpha_suggested', trainable=False)
 
         self._variables = [self._alpha, self._alpha_suggested]
 
@@ -196,7 +196,8 @@ class AdaptiveLineSearch:
                                                                 loop_vars=[lsstate0]))
 
             sanity_check_true = lsstate_new
-            sanity_check_false = LSState(newf=f0, newx=x0, alpha=0., step_count=lsstate_new.step_count)
+            sanity_check_false = LSState(newf=f0, newx=x0, alpha=tf.constant(0., dtype=self._dtype),
+                                         step_count=lsstate_new.step_count)
 
             # New suggestion for step size
             if lsstate_new.step_count == 1:

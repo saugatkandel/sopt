@@ -55,7 +55,8 @@ class LMA(object):
             raise ValueError("The optimizer currently only supports a one-dimensional variable array. "
                              + "Reshaping into multidimensional arrays should can be wrapped into predictions_fn.")
         self._input_var = input_var
-        self._machine_eps = np.finfo(input_var.dtype.as_numpy_dtype).eps
+        self._dtype = input_var.dtype.base_dtype.name
+        self._machine_eps = np.finfo(self._dtype).eps
 
         self._predictions_fn = predictions_fn
         self._loss_fn = loss_fn
@@ -104,11 +105,11 @@ class LMA(object):
 
         self._diag_precond_t = diag_precond_t
 
-        self._mu = tf.Variable(mu, dtype=tf.float32, trainable=False)
+        self._mu = tf.Variable(mu, dtype=self._dtype, trainable=False)
         self._update_var = tf.Variable(tf.zeros_like(self._input_var), trainable=False)
 
-        self._loss_old = tf.Variable(np.inf, dtype=tf.float32, trainable=False)
-        self._loss_new = tf.Variable(np.inf, dtype=tf.float32, trainable=False)
+        self._loss_old = tf.Variable(np.inf, dtype=self._dtype, trainable=False)
+        self._loss_new = tf.Variable(np.inf, dtype=self._dtype, trainable=False)
 
         self._iteration = tf.Variable(0, dtype=tf.int32, trainable=False)
 
@@ -116,7 +117,7 @@ class LMA(object):
 
         self._projected_gradient_iterations = tf.Variable(0, dtype=tf.int32, trainable=False)
         self._total_proj_ls_iterations = tf.Variable(0, dtype=tf.int32, trainable=False)
-        self._projected_gradient_linesearch = AdaptiveLineSearch(name='proj_ls_linesearch')
+        self._projected_gradient_linesearch = AdaptiveLineSearch(name='proj_ls_linesearch', dtype=self._dtype)
 
         # This stores the maximum encountered values of the diagonal of the GN matrix.
         # This is based on the minpack implementation of the LM problem
@@ -295,14 +296,16 @@ class LMA(object):
 
                 linear_ax = MatrixFreeLinearOp(lambda v: gvp_fn_l_v(damping, v),
                                                tf.TensorShape((self._input_var.shape.dims[0],
-                                                               self._input_var.shape.dims[0])))
+                                                               self._input_var.shape.dims[0])),
+                                               dtype=self._dtype)
 
                 preconditioner = None  # Default
                 if self._diag_precond_t is not None:
                     precond_t = 1 / (self._diag_precond_t + damping)
                     preconditioner = MatrixFreeLinearOp(lambda x: x * precond_t,
                                                         tf.TensorShape((self._input_var.shape.dims[0],
-                                                                        self._input_var.shape.dims[0])))
+                                                                        self._input_var.shape.dims[0])),
+                                                        dtype=self._dtype)
 
                 cg_x0 = tf.zeros_like(self._update_var)
                 if self._warm_start:
@@ -323,7 +326,7 @@ class LMA(object):
                 if pred_reduction != 0:
                     ratio = actual_reduction / pred_reduction
                 else:
-                    ratio = tf.constant(0.)
+                    ratio = tf.constant(0., dtype=self._dtype)
 
                 # Using updates from "On a New Updating Rule of the Levenberg–Marquardt Parameter"
                 if ratio < self._min_reduction_ratio:
@@ -361,10 +364,10 @@ class LMA(object):
             lmstate0 = LMState(mu_old=self._mu,
                                mu_new=self._mu,
                                dx=x0,
-                               loss=tf.constant(0., dtype='float32'),
-                               actual_reduction=tf.constant(0., dtype='float32'),
-                               pred_reduction=tf.constant(1., dtype='float32'),
-                               ratio=tf.constant(0., dtype='float32'),
+                               loss=tf.constant(0., dtype=self._dtype),
+                               actual_reduction=tf.constant(0., dtype=self._dtype),
+                               pred_reduction=tf.constant(1., dtype=self._dtype),
+                               ratio=tf.constant(0., dtype=self._dtype),
                                cgi=tf.constant(0, dtype='int32'),
                                #v_const=self._input_var,
                                converged=grad_converged,

@@ -1,5 +1,5 @@
-from .linesearch import *#linear_conjugate_gradient
-from .linear_conjugate_gradient import *#linesearch
+from .linesearch import *
+from .linear_conjugate_gradient import *
 
 __all__ = []
 __all__ += linear_conjugate_gradient.__all__

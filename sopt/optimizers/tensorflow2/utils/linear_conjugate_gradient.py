@@ -8,10 +8,11 @@ __all__ = ['MatrixFreeLinearOp', 'conjugate_gradient']
 class MatrixFreeLinearOp(LinearOperator):
     def __init__(self,
                  operator: Callable[[tf.Tensor], tf.Tensor],
-                 shape: tf.TensorShape) -> None:
+                 shape: tf.TensorShape,
+                 dtype: str) -> None:
         self._operator = operator
         self._op_shape = shape
-        super().__init__(dtype=tf.float32, is_self_adjoint=True, is_positive_definite=True)
+        super().__init__(dtype=dtype, is_self_adjoint=True, is_positive_definite=True)
 
     def _matvec(self,
                 x: tf.Tensor,
@@ -102,7 +103,7 @@ def conjugate_gradient(operator: LinearOperator,
     [1] Section 10.24 from https://graphics.stanford.edu/courses/cs205a-13-fall/assets/notes/chapter10.pdf
 
     """
-
+    dtype = rhs.dtype.base_dtype.name
     def stopping_criterion(state: CGState) -> tf.Tensor:
         with tf.name_scope('cg_cond'):
             output = tf.linalg.norm(state.r) > tol
@@ -148,7 +149,7 @@ def conjugate_gradient(operator: LinearOperator,
             # gamma0 = tf.reduce_sum(r0 * p0)#
             gamma0 = tf.tensordot(r0, p0, 1)
             tol *= tf.linalg.norm(rhs)  # r0)
-            r_check0 = 0.
+            r_check0 = tf.constant(0., dtype=dtype)
         state = CGState(i=tf.constant(0, dtype=tf.int32), x=x, r=r0,
                         p=p0, gamma=gamma0, r_check=r_check0)
         [state] = tf.nest.map_structure(tf.stop_gradient, tf.while_loop(cond=stopping_criterion, body=cg_step,

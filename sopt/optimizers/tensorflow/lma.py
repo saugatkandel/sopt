@@ -10,6 +10,7 @@ from sopt.optimizers.tensorflow import MatrixFreeLinearOp, conjugate_gradient, A
 
 __all__ = ['LMA']#, 'ScaledLMA', 'PCGLMA']
 
+
 class LMState(NamedTuple):
     mu_old: tf.Tensor
     mu_new: tf.Tensor
@@ -48,12 +49,13 @@ class LMA(object):
                  diag_precond_t: tf.Tensor = None,  # Use preconditioning for CG steps
                  #diag_mu_thres_low: float = 1e-8,
                  min_cg_tol: float = None,  # Force CG iterations to have at least this tolerance.s
-                 warm_start: bool = False,
+                 warm_start: bool = True,
                  assert_tolerances: bool = False) -> None:
 
         self._name = name
         self._input_var = input_var
-        self._machine_eps = np.finfo(input_var.dtype.as_numpy_dtype).eps
+        self._dtype = input_var.dtype.base_dtype.name
+        self._machine_eps = np.finfo(np.dtype(self._dtype)).eps
 
         self._predictions_fn = predictions_fn
         self._loss_fn = loss_fn
@@ -106,38 +108,28 @@ class LMA(object):
         self._diag_precond_t = diag_precond_t
 
         with tf.variable_scope(name):
-            self._mu = tf.get_variable("lambda", dtype=tf.float32,
-                                                   initializer=mu,
-                                                   trainable=False)
-            self._update_var = tf.get_variable("delta", dtype=tf.float32,
-                                               initializer=tf.zeros_like(self._input_var),
+            self._mu = tf.Variable(mu, dtype=self._dtype, name="lambda", trainable=False)
+            self._update_var = tf.Variable(tf.zeros_like(self._input_var, dtype=self._dtype), name="delta",
                                                trainable=False)
-            self._dummy_var = tf.get_variable("dummy", dtype=tf.float32,
-                                              initializer=tf.zeros_like(self._preds_t),
-                                              trainable=False)
+            self._dummy_var = tf.Variable(tf.zeros_like(self._preds_t, self._dtype),name="dummy", trainable=False)
 
-            self._loss_before_update = tf.get_variable("loss_before_update", dtype=tf.float32,
-                                                     initializer=0.,
-                                                     trainable=False)
+            self._loss_before_update = tf.Variable(0., name="loss_before_update", dtype=self._dtype,
+                                                   trainable=False)
 
-            self._iteration = tf.get_variable("iteration", shape=[], dtype=tf.int32,
-                                              initializer=tf.zeros_initializer,
-                                              trainable=False)
+            self._iteration = tf.Variable(0, name="iteration", dtype=tf.int32, trainable=False)
 
-            self._total_cg_iterations = tf.get_variable("total_cg_iterations",
-                                                        dtype=tf.int32, shape=[],
-                                                        initializer=tf.zeros_initializer,
+            self._total_cg_iterations = tf.Variable(0, name="total_cg_iterations",
+                                                        dtype=tf.int32,
                                                         trainable=False)
 
-            self._projected_gradient_iterations = tf.get_variable("projected_grad_iterations",
-                                                                  dtype=tf.int32, shape=[],
-                                                                  initializer=tf.zeros_initializer,
+            self._projected_gradient_iterations = tf.Variable(0, name="projected_grad_iterations",
+                                                                  dtype=tf.int32,
                                                                   trainable=False)
-            self._total_proj_ls_iterations = tf.get_variable("total_projection_line_search_iterations",
-                                                             dtype=tf.int32, shape=[],
-                                                             initializer=tf.zeros_initializer,
+            self._total_proj_ls_iterations = tf.Variable(0, name="total_projection_line_search_iterations",
+                                                             dtype=tf.int32,
                                                              trainable=False)
-            self._projected_gradient_linesearch = AdaptiveLineSearch(name='proj_ls_linesearch')
+
+            self._projected_gradient_linesearch = AdaptiveLineSearch(name='proj_ls_linesearch', dtype=self._dtype)
                                                                      #suff_decr=self._min_reduction_ratio)
 
             # This stores the maximum encountered values of the diagonal of the GN matrix.
@@ -145,11 +137,13 @@ class LMA(object):
             # For reference, see Section 2.2 here:
             # https://arxiv.org/pdf/1201.5885.pdf
             if self._diag_mu_scaling_t is not None:
-                self._diag_mu_max_values_t = tf.get_variable("diag_mu_max_values",
-                                                             initializer=tf.zeros_like(self._diag_mu_scaling_t),
-                                                             trainable=False)
+                self._diag_mu_max_values_t = tf.Variable(tf.zeros_like(self._diag_mu_scaling_t,
+                                                                                       dtype=self._dtype),
+                                                         name="diag_mu_max_values", trainable=False)
         # Set up the second order calculations to define matrix-free linear ops.
+
         self._setup_second_order()
+
 
     def _check_tolerance(self, ftol, gtol):
         """This is adapted almost exactly from the corresponding scipy function"""
@@ -169,7 +163,6 @@ class LMA(object):
                                       x: tf.Tensor,
                                       v_constant: tf.Tensor) -> tf.Tensor:
         predictions_this = self._predictions_fn(v_constant)
-
         if self._diag_hessian_fn is None:
             loss_this = self._loss_fn(predictions_this)
             hjvp = _hessian_vector_product(ys=[loss_this],
@@ -269,6 +262,7 @@ class LMA(object):
                            + "This is a test version, and there is no guarantee that these work as intended.")
         with tf.name_scope(self._name + '_minimize_step'):
 
+            print(self._loss_before_update, self._loss_t)
             store_loss_op = tf.assign(self._loss_before_update, self._loss_t,
                                       name='store_loss_op')
 
@@ -301,7 +295,8 @@ class LMA(object):
 
                 linear_ax = MatrixFreeLinearOp(lambda h: jhjvp_fn_l_h(damping, h, state.v_const),
                                                tf.TensorShape((self._input_var.shape.dims[0],
-                                                               self._input_var.shape.dims[0])))
+                                                               self._input_var.shape.dims[0])),
+                                               self._dtype)
 
                 preconditioner = None # Default
                 if self._diag_precond_t is not None:
@@ -309,7 +304,8 @@ class LMA(object):
                     precond_t = 1 / (self._diag_precond_t + damping)
                     preconditioner = MatrixFreeLinearOp(lambda x: x * precond_t,
                                                          tf.TensorShape((self._input_var.shape.dims[0],
-                                                                         self._input_var.shape.dims[0])))
+                                                                         self._input_var.shape.dims[0])),
+                                                        self._dtype)
 
                 cg_solve = conjugate_gradient(operator=linear_ax,
                                               rhs=linear_b,
@@ -317,6 +313,7 @@ class LMA(object):
                                               tol=this_forcing_eta,
                                               max_iter=self._max_cg_iter,
                                               preconditioner=preconditioner)
+
                 cg_update = tf.identity(cg_solve.x, name='cg_solved')
                 optimized_var = self._input_var + cg_update
 
@@ -325,9 +322,9 @@ class LMA(object):
                 loss_new = self._loss_fn(self._predictions_fn(optimized_var))
                 actual_reduction = loss_new - self._loss_before_update
 
-                ratio = tf.cond(tf.math.not_equal(pred_reduction, 0.),
+                ratio = tf.cond(tf.math.not_equal(pred_reduction, tf.constant(0., dtype=self._dtype)),
                                 lambda: actual_reduction / pred_reduction,
-                                lambda: 0.)
+                                lambda: tf.constant(0., dtype=self._dtype))
                 f1 = lambda: tf.minimum(state.mu_new * self._mu_expansion, self._mu_thres_high)
                 f2 = lambda: tf.maximum(state.mu_new * self._mu_contraction, self._mu_thres_low)
                 f3 = lambda: state.mu_new
@@ -387,10 +384,10 @@ class LMA(object):
             lmstate0 = LMState(mu_old=self._mu,
                                mu_new=self._mu,
                                dx=x0,
-                               loss=tf.constant(0., dtype='float32'),
-                               actual_reduction=tf.constant(0., dtype='float32'),
-                               pred_reduction=tf.constant(1., dtype='float32'),
-                               ratio=tf.constant(0., dtype='float32'),
+                               loss=tf.constant(0., dtype=self._dtype),
+                               actual_reduction=tf.constant(0., dtype=self._dtype),
+                               pred_reduction=tf.constant(1., dtype=self._dtype),
+                               ratio=tf.constant(0., dtype=self._dtype),
                                cgi=tf.constant(0, dtype='int32'),
                                v_const=self._input_var,
                                converged=grad_converged,
@@ -587,10 +584,10 @@ class PCGLMA(LMA):
             lmstate0 = LMState(mu_old=self._mu,
                                mu_new=self._mu,
                                dx=tf.zeros_like(self._update_var),
-                               loss=tf.constant(0., dtype='float32'),
-                               actual_reduction=tf.constant(0., dtype='float32'),
-                               pred_reduction=tf.constant(1., dtype='float32'),
-                               ratio=tf.constant(0., dtype='float32'),
+                               loss=tf.constant(0., dtype=self._dtype),
+                               actual_reduction=tf.constant(0., dtype=self._dtype),
+                               pred_reduction=tf.constant(1., dtype=self._dtype),
+                               ratio=tf.constant(0., dtype=self._dtype),
                                cgi=tf.constant(0, dtype='int32'),
                                v_const=self._input_var,
                                converged=grad_converged,

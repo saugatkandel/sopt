@@ -2,9 +2,11 @@
 # Only float32 data types supported right now.
 # This is fairly easy to change to add complex data types.
 import numpy as np
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 from typing import Callable
 from sopt.optimizers.tensorflow import BackTrackingLineSearch, AdaptiveLineSearch
+
+__all__ = ['NonLinearConjugateGradient']
 
 class NonLinearConjugateGradient(object):
     beta_functions_map = {"PR": "_calculatePRBeta"}
@@ -21,11 +23,10 @@ class NonLinearConjugateGradient(object):
                  linesearch_type: str='adaptive',
                  diag_precondition_t: tf.Tensor= None,) -> None:
         self._name = name
-
         self._input_var = input_var
+        self._dtype = self._input_var.dtype.base_dtype.name
 
-
-        self._machine_eps = np.finfo(input_var.dtype.as_numpy_dtype).eps
+        self._machine_eps = np.finfo(np.dtype(self._dtype)).eps
 
         self._predictions_fn = predictions_fn
         self._loss_fn = loss_fn
@@ -53,7 +54,8 @@ class NonLinearConjugateGradient(object):
             self._linesearch_steps = tf.Variable(0, dtype='int32',
                                                  name='ls_steps')
             self._linesearch = self.linesearch_map[linesearch_type](maxiter=self._max_backtracking_iter,
-                                                                    initial_stepsize=1.0)
+                                                                    initial_stepsize=1.0,
+                                                                    dtype=self._dtype)
 
         # Gradient calculation
         self._grads_t = tf.gradients(self._loss_t, self._input_var)[0]
@@ -75,8 +77,8 @@ class NonLinearConjugateGradient(object):
             p_old = self._diag_precondition_t * p_old
         beta_num = tf.reduce_sum(p * (self._descent_dir_t - self._descent_dir_old_t))
         beta_denom = tf.reduce_sum(p_old * self._descent_dir_old_t)
-        beta = tf.cond(self._steps > 0, lambda: beta_num / beta_denom, lambda: 0.)
-        beta = tf.maximum(beta, 0.)
+        beta = tf.cond(self._steps > 0, lambda: beta_num / beta_denom, lambda: tf.constant(0., dtype=self._dtype))
+        beta = tf.maximum(beta, tf.constant(0., dtype=self._dtype))
         return beta
 
     @staticmethod

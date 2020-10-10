@@ -1,5 +1,5 @@
 from typing import Callable, NamedTuple
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 import numpy as np
 
 __all__ = ['BackTrackingLineSearch', 'AdaptiveLineSearch']
@@ -19,7 +19,7 @@ class BackTrackingLineSearch:
                  suff_decr: float = 1e-4,
                  initial_stepsize: float = 10.0,
                  stepsize_threshold_low: float = 1e-10,
-                 dtype: np.dtype = np.float32,
+                 dtype: str = 'float32',
                  maxiter: int = None,
                  name='backtracking_linesearch') -> None:
         self.contraction_factor = contraction_factor
@@ -29,7 +29,7 @@ class BackTrackingLineSearch:
         self.stepsize_threshold_low = stepsize_threshold_low
 
         self._dtype = dtype
-        self._machine_eps = np.finfo(dtype).eps
+        self._machine_eps = np.finfo(np.dtype(dtype)).eps
 
         self._name = name
 
@@ -40,8 +40,8 @@ class BackTrackingLineSearch:
         self.maxiter = np.minimum(maxiter, machine_maxiter).astype('int32')
 
         with tf.variable_scope(name):
-            self._oldf0 = tf.Variable(-np.inf, dtype='float32', name='old_f0')
-            self._alpha = tf.Variable(0., dtype='float32', name='alpha')
+            self._oldf0 = tf.Variable(-np.inf, dtype=self._dtype, name='old_f0')
+            self._alpha = tf.Variable(0., dtype=self._dtype, name='alpha')
 
         self._variables = [self._oldf0, self._alpha]
 
@@ -148,8 +148,8 @@ class AdaptiveLineSearch:
         self.maxiter = np.minimum(maxiter, machine_maxiter).astype('int32')
 
         with tf.variable_scope(name):
-            self._alpha = tf.Variable(0., dtype='float32', name='alpha')
-            self._alpha_suggested = tf.Variable(0., dtype='float32', name='alpha_suggested')
+            self._alpha = tf.Variable(0., dtype=self._dtype, name='alpha')
+            self._alpha_suggested = tf.Variable(0., dtype=self._dtype, name='alpha_suggested')
 
         self._variables = [self._alpha, self._alpha_suggested]
 
@@ -178,7 +178,7 @@ class AdaptiveLineSearch:
 
             def _alphafn_false():
                 return self.initial_stepsize / descent_norm
-
+            
             alpha = tf.cond(self._alpha_suggested > 0, _alphafn_true, _alphafn_false)
 
             # Make the chosen sten and compute the cost there
@@ -208,7 +208,9 @@ class AdaptiveLineSearch:
                                           back_prop=False)
 
             sanity_check_true = lambda: lsstate_new
-            sanity_check_false = lambda: LSState(newf=f0, newx=x0, alpha=0., step_count=lsstate_new.step_count)
+            sanity_check_false = lambda: LSState(newf=f0, newx=x0,
+                                                 alpha=tf.constant(0., dtype=self._dtype),
+                                                 step_count=lsstate_new.step_count)
 
             # New suggestion for step size
             # case 1: if things go very well (step count is 1), push your luck
@@ -221,6 +223,7 @@ class AdaptiveLineSearch:
             # try to recover
             case3 = lambda: self.optimism * lsstate_new.alpha
 
+
             # the (step_count - 1) is just a workaround for switch_case
             # switch case requires contiguous range starting form 0
             # we start from 1.
@@ -228,10 +231,10 @@ class AdaptiveLineSearch:
             suggested_alpha = tf.switch_case(branch_index=(lsstate_new.step_count - 1),
                                              branch_fns={0: case1, 1: case2},
                                              default=case3)
+
             with tf.control_dependencies([lsstate_new.step_count]):
                 assign_ops = tf.group([self._alpha_suggested.assign(suggested_alpha),
                                        self._alpha.assign(lsstate_new.alpha)])
-
             with tf.control_dependencies([assign_ops]):
                 lsstate_updated = tf.cond(lsstate_new.newf <= f0, sanity_check_true, sanity_check_false)
 

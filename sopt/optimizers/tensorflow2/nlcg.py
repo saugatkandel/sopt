@@ -1,5 +1,4 @@
 # Non linear conjugate gradient method
-# Only float32 data types supported right now.
 # This is fairly easy to change to add complex data types.
 import numpy as np
 import tensorflow as tf
@@ -27,7 +26,8 @@ class NonLinearConjugateGradient(object):
             raise ValueError("The optimizer currently only supports a one-dimensional variable array. "
                              + "Reshaping into multidimensional arrays should can be wrapped into objective_fn.")
         self._input_var = input_var
-        self._machine_eps = np.finfo(input_var.dtype.as_numpy_dtype).eps
+        self._dtype = self._input_var.dtype.base_dtype.name
+        self._machine_eps = np.finfo(self._dtype).eps
 
         self._objective_fn = objective_fn
 
@@ -49,10 +49,11 @@ class NonLinearConjugateGradient(object):
         self._steps = tf.Variable(0, dtype='int32', name='steps', trainable=False)
         self._linesearch_steps = tf.Variable(0, dtype='int32', name='ls_steps', trainable=False)
         self._linesearch = self.linesearch_map[linesearch_type](maxiter=self._max_backtracking_iter,
-                                                                initial_stepsize=1.0)
+                                                                initial_stepsize=1.0,
+                                                                dtype=self._dtype)
 
-        self._loss_old = tf.Variable(np.inf, dtype='float32', trainable=False)
-        self._loss_new = tf.Variable(np.inf, dtype='float32', trainable=False)
+        self._loss_old = tf.Variable(np.inf, dtype=self._dtype, trainable=False)
+        self._loss_new = tf.Variable(np.inf, dtype=self._dtype, trainable=False)
 
         self._variables = [self._descent_dir_old, self._s, self._steps, self._linesearch_steps,
                            self._loss_old, self._loss_new]
@@ -74,9 +75,9 @@ class NonLinearConjugateGradient(object):
         beta_num = tf.reduce_sum(p * (descent_dir - self._descent_dir_old))
         beta_denom = tf.reduce_sum(p_old * self._descent_dir_old)
         if self._steps > 0:
-            beta = tf.maximum(beta_num / beta_denom, 0.)
+            beta = tf.maximum(beta_num / beta_denom, tf.constant(0., dtype=self._dtype))
         else:
-            beta = 0.
+            beta = tf.constant(0., dtype=self._dtype)
         return beta
 
     @staticmethod
