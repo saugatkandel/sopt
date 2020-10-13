@@ -61,12 +61,13 @@ class NonLinearConjugateGradient(object):
         self._grads_t = tf.gradients(self._loss_t, self._input_var)[0]
         self._descent_dir_t = -self._grads_t
         self._variables = [self._descent_dir_old_t, self._s_t, self._steps, self._linesearch_steps]
+        reset_ops = [v.assign(v.initial_value) for v in self._variables]
+        self._reset_op = tf.group([*reset_ops, self._linesearch.reset])
+
 
     @property
     def reset(self):
-        reset_ops = [v.assign(v.initial_value) for v in self._variables]
-        return tf.group([*reset_ops, self._linesearch.reset])
-
+        return self._reset_op
 
     def _calculatePRBeta(self):
 

@@ -152,11 +152,14 @@ class AdaptiveLineSearch:
             self._alpha_suggested = tf.Variable(0., dtype=self._dtype, name='alpha_suggested')
 
         self._variables = [self._alpha, self._alpha_suggested]
+        reset_ops = [v.assign(v.initial_value) for v in self._variables]
+
+        self._reset_op = tf.group(reset_ops)
+
 
     @property
     def reset(self):
-        reset_ops = [v.assign(v.initial_value) for v in self._variables]
-        return tf.group(reset_ops)
+        return self._reset_op
 
     def search(self, objective_and_update: Callable,
                x0: tf.Tensor,
