@@ -3,7 +3,6 @@
 
 from .curveball import Curveball, PreconditionedCurveball
 from .lma import LMA
-from .merit_lma import MeritLMA
 from .nlcg import NonLinearConjugateGradient
 from .projected_gradient import ProjectedGradient
 from .utils import *
@@ -21,6 +20,5 @@ __all__ = ['AdaptiveLineSearch',
            'ProjectedGradient',
            'Curveball',
            'PreconditionedCurveball',
-           'LMA',
-           'MeritLMA']
+           'LMA']
 #__all__ += utils.__all__
