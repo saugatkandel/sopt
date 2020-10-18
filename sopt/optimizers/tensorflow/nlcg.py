@@ -1,9 +1,10 @@
 # Non linear conjugate gradient method
-# Only float32 data types supported right now.
+# Only float data types supported right now.
 # This is fairly easy to change to add complex data types.
 import numpy as np
 import tensorflow as tf
 from typing import Callable
+
 from sopt.optimizers.tensorflow import BackTrackingLineSearch, AdaptiveLineSearch
 
 __all__ = ['NonLinearConjugateGradient']
