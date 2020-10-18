@@ -1,11 +1,12 @@
 #Author - Saugat Kandel
 # coding: utf-8
 
-from .utils import *
 from .curveball import Curveball, PreconditionedCurveball
 from .lma import LMA
-from .merit_lma import  MeritLMA
+from .merit_lma import MeritLMA
 from .nlcg import NonLinearConjugateGradient
+from .projected_gradient import ProjectedGradient
+from .utils import *
 from .utils import AdaptiveLineSearch, BackTrackingLineSearch
 from .utils import MatrixFreeLinearOp, conjugate_gradient
 
@@ -17,6 +18,7 @@ __all__ = ['AdaptiveLineSearch',
            'MatrixFreeLinearOp',
            'conjugate_gradient',
            'NonLinearConjugateGradient',
+           'ProjectedGradient',
            'Curveball',
            'PreconditionedCurveball',
            'LMA',

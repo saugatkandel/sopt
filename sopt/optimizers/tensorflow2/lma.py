@@ -1,9 +1,11 @@
-from typing import Callable, NamedTuple, List, Tuple, Union
-import tensorflow as tf
-import numpy as np
-from sopt.optimizers.tensorflow2.utils import MatrixFreeLinearOp, conjugate_gradient, AdaptiveLineSearch
-import sopt.optimizers.tensorflow2.utils.autodiff_helper as adh
 import logging
+import numpy as np
+import tensorflow as tf
+from typing import Callable, NamedTuple, List, Tuple, Union
+
+import sopt.optimizers.tensorflow2.utils.autodiff_helper as adh
+from sopt.optimizers.tensorflow2.utils import MatrixFreeLinearOp, conjugate_gradient, AdaptiveLineSearch
+
 logger = tf.get_logger()
 logger.setLevel(logging.WARNING)
 
@@ -44,8 +46,9 @@ class LMA(object):
                  min_reduction_ratio: float = 1e-4,
                  proj_min_reduction_ratio: float = None,
                  diag_hessian_fn: Callable[[tf.Tensor], tf.Tensor] = None,
-                 diag_mu_scaling_t: tf.Tensor = None,  # Use  Marquardt-Fletcher scaling
-                 diag_precond_t: tf.Tensor = None,  # Use preconditioning for CG steps
+                 # The scaling and precondition should be callables that do not take any input
+                 diag_mu_scaling_fn: Callable[[], tf.Tensor] = None,  # Use  Marquardt-Fletcher scaling
+                 diag_precond_fn: Callable[[], tf.Tensor] = None,  # Use preconditioning for CG steps
                  min_cg_tol: float = None,  # Force CG iterations to have at least this tolerance.s
                  warm_start: bool = False,
                  assert_tolerances: bool = False) -> None:
@@ -100,10 +103,10 @@ class LMA(object):
         #    raise ValueError("Cannot enable both Marquardt-Fletcher scaling and CG preconditioning. "
         #                     + "This has not been tested.")
 
-        self._diag_mu_scaling_t = diag_mu_scaling_t
+        self._diag_mu_scaling_fn = diag_mu_scaling_fn
         # self._diag_mu_thres_low = diag_mu_thres_low
 
-        self._diag_precond_t = diag_precond_t
+        self._diag_precond_fn = diag_precond_fn
 
         self._mu = tf.Variable(mu, dtype=self._dtype, trainable=False)
         self._update_var = tf.Variable(tf.zeros_like(self._input_var), trainable=False)
@@ -123,8 +126,8 @@ class LMA(object):
         # This is based on the minpack implementation of the LM problem
         # For reference, see Section 2.2 here:
         # https://arxiv.org/pdf/1201.5885.pdf
-        if self._diag_mu_scaling_t is not None:
-            self._diag_mu_max_values_t = tf.Variable(tf.zeros_like(self._diag_mu_scaling_t), trainable=False)
+        if self._diag_mu_scaling_fn is not None:
+            self._diag_mu_max_values = tf.Variable(tf.zeros_like(self._input_var), trainable=False)
         # convergence status is 0 for not converged
         self._convergence_status = tf.Variable(0, dtype='int32', trainable=False)
 
@@ -198,11 +201,17 @@ class LMA(object):
             return loss, update
 
         def _linesearch():
+            dx = projected_var - self._input_var
+            lhs = tf.reduce_sum(dx * objective_grad)
+            rhs = 1e-8 * tf.linalg.norm(dx) ** 2.1
+            descent_dir = tf.cond(lhs <= -rhs, lambda: dx, lambda: -objective_grad)
+
             linesearch_state = self._projected_gradient_linesearch.search(objective_and_update=_loss_and_update_fn,
                                                                           x0=self._input_var,
-                                                                          descent_dir=-objective_grad,
+                                                                          descent_dir=descent_dir,  # -self._grads_t,
                                                                           gradient=objective_grad,
                                                                           f0=self._loss_old)
+
             self._total_proj_ls_iterations.assign_add(linesearch_state.step_count),
             self._projected_gradient_iterations.assign_add(1)
             return linesearch_state
@@ -279,18 +288,19 @@ class LMA(object):
             if self._grad_norm_regularization_power != 0:
                 grad_norm_regularization = grad_norm ** self._grad_norm_regularization_power
 
-            if self._diag_mu_scaling_t is not None:
-                diag_mu_scaling_this_iter = tf.where(self._diag_mu_scaling_t > self._diag_mu_max_values_t,
-                                                     self._diag_mu_scaling_t,
-                                                     self._diag_mu_max_values_t)
-                diag_mu_scaling_this_iter = tf.where(tf.equal(diag_mu_scaling_this_iter, 0),
-                                                     tf.ones_like(diag_mu_scaling_this_iter),
-                                                     diag_mu_scaling_this_iter)
+            if self._diag_mu_scaling_fn is not None:
+                diag_mu_scaling = self._diag_mu_scaling_fn()
+                diag_mu_scaling = tf.where(diag_mu_scaling > self._diag_mu_max_values,
+                                           diag_mu_scaling,
+                                           self._diag_mu_max_values)
+                diag_mu_scaling = tf.where(tf.equal(diag_mu_scaling, 0),
+                                           tf.ones_like(diag_mu_scaling),
+                                           diag_mu_scaling)
 
             def _damping_linesearch_step(state: LMState):
                 
-                if self._diag_mu_scaling_t is not None:
-                    damping = state.mu_new * grad_norm_regularization * diag_mu_scaling_this_iter
+                if self._diag_mu_scaling_fn is not None:
+                    damping = state.mu_new * grad_norm_regularization * diag_mu_scaling
                 else:
                     damping = state.mu_new * grad_norm_regularization
 
@@ -300,9 +310,10 @@ class LMA(object):
                                                dtype=self._dtype)
 
                 preconditioner = None  # Default
-                if self._diag_precond_t is not None:
-                    precond_t = 1 / (self._diag_precond_t + damping)
-                    preconditioner = MatrixFreeLinearOp(lambda x: x * precond_t,
+                if self._diag_precond_fn is not None:
+                    precond = self._diag_precond_fn()
+                    precond = 1 / (precond + damping)
+                    preconditioner = MatrixFreeLinearOp(lambda x: x * precond,
                                                         tf.TensorShape((self._input_var.shape.dims[0],
                                                                         self._input_var.shape.dims[0])),
                                                         dtype=self._dtype)
@@ -411,8 +422,8 @@ class LMA(object):
             self._loss_old.assign(loss_old)
             self._loss_new.assign(loss_new)
 
-            if self._diag_mu_scaling_t is not None:
-                self._diag_mu_max_values_t.assign(diag_mu_scaling_this_iter)
+            if self._diag_mu_scaling_fn is not None:
+                self._diag_mu_max_values.assign(diag_mu_scaling)
 
             self._total_cg_iterations.assign_add(lmstate.cgi, name='cg_counter_op')
             self._iteration.assign_add(lmstate.i, name='counter_op')

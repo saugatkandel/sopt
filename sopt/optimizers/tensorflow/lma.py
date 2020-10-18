@@ -6,6 +6,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.python.ops.gradients_impl import _hessian_vector_product
 from typing import Callable, NamedTuple
+
 from sopt.optimizers.tensorflow import MatrixFreeLinearOp, conjugate_gradient, AdaptiveLineSearch
 
 __all__ = ['LMA']#, 'ScaledLMA', 'PCGLMA']
@@ -220,9 +221,14 @@ class LMA(object):
             return loss, update
 
         def _linesearch():
+            dx = projected_var - self._input_var
+            lhs = tf.reduce_sum(dx * self._grads_t)
+            rhs = 1e-8 * tf.linalg.norm(dx) ** 2.1
+            descent_dir = tf.cond(lhs <= -rhs, lambda: dx, lambda: -self._grads_t)
+
             linesearch_state = self._projected_gradient_linesearch.search(objective_and_update=_loss_and_update_fn,
                                                                           x0=self._input_var,
-                                                                          descent_dir=-self._grads_t,
+                                                                          descent_dir=descent_dir,  # -self._grads_t,
                                                                           gradient=self._grads_t,
                                                                           f0=self._loss_before_update)
             counter_ops = [self._total_proj_ls_iterations.assign_add(linesearch_state.step_count),
