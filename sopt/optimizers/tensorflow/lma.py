@@ -7,7 +7,8 @@ import tensorflow as tf
 from tensorflow.python.ops.gradients_impl import _hessian_vector_product
 from typing import Callable, NamedTuple
 
-from sopt.optimizers.tensorflow import MatrixFreeLinearOp, conjugate_gradient, AdaptiveLineSearch
+from sopt.optimizers.tensorflow.utils.linesearch import AdaptiveLineSearch
+from sopt.optimizers.tensorflow.utils.linear_conjugate_gradient import MatrixFreeLinearOp, conjugate_gradient
 
 __all__ = ['LMA']#, 'ScaledLMA', 'PCGLMA']
 

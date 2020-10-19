@@ -6,7 +6,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.python.ops.gradients_impl import _hessian_vector_product
 from typing import Callable, Tuple
-from sopt.optimizers.tensorflow import AdaptiveLineSearch
+from sopt.optimizers.tensorflow.utils.linesearch import AdaptiveLineSearch
 
 
 __all__ = ['Curveball', 'PreconditionedCurveball']

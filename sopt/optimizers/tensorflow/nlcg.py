@@ -5,7 +5,7 @@ import numpy as np
 import tensorflow as tf
 from typing import Callable
 
-from sopt.optimizers.tensorflow import BackTrackingLineSearch, AdaptiveLineSearch
+from sopt.optimizers.tensorflow.utils.linesearch import BackTrackingLineSearch, AdaptiveLineSearch
 
 __all__ = ['NonLinearConjugateGradient']
 
