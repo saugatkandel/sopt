@@ -7,8 +7,8 @@ import tensorflow as tf
 from tensorflow.python.ops.gradients_impl import _hessian_vector_product
 from typing import Callable, NamedTuple
 
-from sopt.optimizers.tensorflow.utils.linesearch import AdaptiveLineSearch
 from sopt.optimizers.tensorflow.utils.linear_conjugate_gradient import MatrixFreeLinearOp, conjugate_gradient
+from sopt.optimizers.tensorflow.utils.linesearch import AdaptiveLineSearch
 
 __all__ = ['LMA']#, 'ScaledLMA', 'PCGLMA']
 
@@ -113,7 +113,7 @@ class LMA(object):
             self._mu = tf.Variable(mu, dtype=self._dtype, name="lambda", trainable=False)
             self._update_var = tf.Variable(tf.zeros_like(self._input_var, dtype=self._dtype), name="delta",
                                                trainable=False)
-            self._dummy_var = tf.Variable(tf.zeros_like(self._preds_t, self._dtype),name="dummy", trainable=False)
+            self._dummy_var = tf.Variable(tf.ones_like(self._preds_t),name="dummy", dtype=self._dtype, trainable=False)
 
             self._loss_before_update = tf.Variable(0., name="loss_before_update", dtype=self._dtype,
                                                    trainable=False)
@@ -142,10 +142,18 @@ class LMA(object):
                 self._diag_mu_max_values_t = tf.Variable(tf.zeros_like(self._diag_mu_scaling_t,
                                                                                        dtype=self._dtype),
                                                          name="diag_mu_max_values", trainable=False)
+
         # Set up the second order calculations to define matrix-free linear ops.
-
         self._setup_second_order()
+        self._variables = [self._mu, self._update_var, self._dummy_var,
+                           self._loss_before_update, self._iteration, self._total_cg_iterations,
+                           self._projected_gradient_iterations, self._total_proj_ls_iterations]
+        reset_ops = [v.assign(v.initial_value) for v in self._variables]
+        self._reset_op = tf.group([*reset_ops, self._projected_gradient_linesearch.reset])
 
+    @property
+    def reset(self):
+        return self._reset_op
 
     def _check_tolerance(self, ftol, gtol):
         """This is adapted almost exactly from the corresponding scipy function"""
@@ -206,7 +214,7 @@ class LMA(object):
         projected_loss_new = self._loss_fn(self._predictions_fn(projected_var))
         projected_loss_change = self._loss_before_update - projected_loss_new
         projection_reduction_ratio = projected_loss_change / tf.abs(self._loss_before_update)
-
+        #with tf.control_dependencies([tf.print(projection_reduction_ratio)]):
         fconv = tf.abs(self._loss_before_update) <= (self._machine_eps)
 
         #dx = projected_var - self._input_var
@@ -222,10 +230,13 @@ class LMA(object):
             return loss, update
 
         def _linesearch():
-            dx = projected_var - self._input_var
-            lhs = tf.reduce_sum(dx * self._grads_t)
-            rhs = 1e-8 * tf.linalg.norm(dx) ** 2.1
-            descent_dir = tf.cond(lhs <= -rhs, lambda: dx, lambda: -self._grads_t)
+            #dx = projected_var - self._input_var
+            #lhs = tf.reduce_sum(dx * self._grads_t)
+            #rhs = 1e-8 * tf.linalg.norm(dx) ** 2.1
+            #with tf.control_dependencies([tf.print('lhs', lhs, '-rhs', -rhs,
+            #                                       'alpha', self._projected_gradient_linesearch._alpha)]):
+            #descent_dir = tf.cond(lhs <= -rhs, lambda: dx, lambda: -self._grads_t)
+            descent_dir = -self._grads_t
 
             linesearch_state = self._projected_gradient_linesearch.search(objective_and_update=_loss_and_update_fn,
                                                                           x0=self._input_var,
