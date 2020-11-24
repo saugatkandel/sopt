@@ -49,6 +49,8 @@ class LMA(object):
                  diag_hessian_fn: Callable[[tf.Tensor], tf.Tensor]= None,
                  diag_mu_scaling_t: tf.Tensor = None,  # Use  Marquardt-Fletcher scaling
                  diag_precond_t: tf.Tensor = None,  # Use preconditioning for CG steps
+                 stochastic_diag_estimator_type: str = None, # Use random sampling to estimate the diagonal elements
+                 stochastic_diag_estimator_iters: int = 1, # Number of matrix-vector-product iterations to use for the estimation
                  #diag_mu_thres_low: float = 1e-8,
                  min_cg_tol: float = None,  # Force CG iterations to have at least this tolerance.s
                  warm_start: bool = True,
@@ -95,7 +97,7 @@ class LMA(object):
             # Setting this ratio to lower than 1e-6 doesn't seem to help, so this seems like a good compromise
             self._proj_min_reduction_ratio = 0.01 * min_reduction_ratio
 
-        self._ftol, self._gtol = self._check_tolerance(ftol, gtol)
+        self._ftol, self._gtol = self._checkTolerance(ftol, gtol)
         self._assert_tolerances = assert_tolerances
 
         self._diag_hessian_fn = diag_hessian_fn
@@ -108,6 +110,24 @@ class LMA(object):
         #self._diag_mu_thres_low = diag_mu_thres_low
 
         self._diag_precond_t = diag_precond_t
+
+        # Currently supporting two types of random estimation:
+        # "martens" : See Chapter 4, Algorithm 6 in Martens, J. (2016). Second-Order Optimization for Neural Networks.
+        # U. of Toronto Thesis, 179.
+        # "bekas": Bekas, C., Kokiopoulou, E., & Saad, Y. (2007).
+        # An estimator for the diagonal of a matrix. Applied Numerical Mathematics, 57(11–12), 1214–1229.
+        # https://doi.org/10.1016/j.apnum.2007.01.003
+        if stochastic_diag_estimator_type is not None:
+            if diag_mu_scaling_t is not None or diag_precond_t is not None:
+                raise ValueError("Cannot use stochastic estimation on top of actual supplied tensors")
+            if stochastic_diag_estimator_type not in ['martens', 'bekas']:
+                raise ValueError('"martens" and "bekas" are the only supported options.')
+            if stochastic_diag_estimator_type == 'martens' and self._diag_hessian_fn is None:
+                raise ValueError('Martens-type stochastic estimation of the GGN diagonal requires the diagonal of the' +
+                                 ' inner hessian matrix as input.')
+        self._stochastic_diag_estimator_type = stochastic_diag_estimator_type
+        self._stochastic_diag_estimator_iters = stochastic_diag_estimator_iters
+
 
         with tf.variable_scope(name):
             self._mu = tf.Variable(mu, dtype=self._dtype, name="lambda", trainable=False)
@@ -138,13 +158,18 @@ class LMA(object):
             # This is based on the minpack implementation of the LM problem
             # For reference, see Section 2.2 here:
             # https://arxiv.org/pdf/1201.5885.pdf
-            if self._diag_mu_scaling_t is not None:
-                self._diag_mu_max_values_t = tf.Variable(tf.zeros_like(self._diag_mu_scaling_t,
-                                                                                       dtype=self._dtype),
+            if self._diag_mu_scaling_t is not None or (stochastic_diag_estimator_type is not None):
+                self._diag_mu_max_values_t = tf.Variable(tf.zeros_like(self._input_var,
+                                                                       dtype=self._dtype),
                                                          name="diag_mu_max_values", trainable=False)
 
         # Set up the second order calculations to define matrix-free linear ops.
-        self._setup_second_order()
+        self._setupSecondOrder()
+
+        # Set up stochastic GGN diagonal calculation
+        if self._stochastic_diag_estimator_type is not None:
+            self._setupStochasticDiagEstimation()
+
         self._variables = [self._mu, self._update_var, self._dummy_var,
                            self._loss_before_update, self._iteration, self._total_cg_iterations,
                            self._projected_gradient_iterations, self._total_proj_ls_iterations]
@@ -155,7 +180,7 @@ class LMA(object):
     def reset(self):
         return self._reset_op
 
-    def _check_tolerance(self, ftol, gtol):
+    def _checkTolerance(self, ftol, gtol):
         """This is adapted almost exactly from the corresponding scipy function"""
         def check(tol, name):
             if (tol is None) or (tol < self._machine_eps):
@@ -168,10 +193,10 @@ class LMA(object):
         gtol = check(gtol, "gtol")
         return ftol, gtol
 
-    def _setup_hessian_vector_product(self, 
-                                      jvp_fn: Callable[[tf.Tensor], tf.Tensor],
-                                      x: tf.Tensor,
-                                      v_constant: tf.Tensor) -> tf.Tensor:
+    def _setupHessianVectorProduct(self,
+                                   jvp_fn: Callable[[tf.Tensor], tf.Tensor],
+                                   x: tf.Tensor,
+                                   v_constant: tf.Tensor) -> tf.Tensor:
         predictions_this = self._predictions_fn(v_constant)
         if self._diag_hessian_fn is None:
             loss_this = self._loss_fn(predictions_this)
@@ -184,14 +209,14 @@ class LMA(object):
         jhjvp = tf.gradients(predictions_this, v_constant, hjvp)[0]
         return jhjvp
         
-    def _setup_second_order(self) -> None:
+    def _setupSecondOrder(self) -> None:
         with tf.name_scope(self._name + '_gngvp'):
             self.vjp_fn = lambda x: tf.gradients(self._preds_t, self._input_var, x,
                                                  stop_gradients=[x], name="vjp")[0]
             jvp_fn = lambda x: tf.gradients(self.vjp_fn(self._dummy_var), self._dummy_var, x, name='jvpz')[0]
             self.jvp_fn = jvp_fn
             
-            self._jhjvp_fn = lambda x, v_constant: self._setup_hessian_vector_product(jvp_fn, x, v_constant)
+            self._jhjvp_fn = lambda x, v_constant: self._setupHessianVectorProduct(jvp_fn, x, v_constant)
 
             self._loss_grads_t = tf.gradients(self._loss_t, self._preds_t)[0]
             self._grads_t = self.vjp_fn(self._loss_grads_t)
@@ -230,13 +255,13 @@ class LMA(object):
             return loss, update
 
         def _linesearch():
-            #dx = projected_var - self._input_var
-            #lhs = tf.reduce_sum(dx * self._grads_t)
-            #rhs = 1e-8 * tf.linalg.norm(dx) ** 2.1
+            dx = projected_var - self._input_var
+            lhs = tf.reduce_sum(dx * self._grads_t)
+            rhs = 1e-8 * tf.linalg.norm(dx) ** 2.1
             #with tf.control_dependencies([tf.print('lhs', lhs, '-rhs', -rhs,
             #                                       'alpha', self._projected_gradient_linesearch._alpha)]):
-            #descent_dir = tf.cond(lhs <= -rhs, lambda: dx, lambda: -self._grads_t)
-            descent_dir = -self._grads_t
+            descent_dir = tf.cond(lhs <= -rhs, lambda: dx, lambda: -self._grads_t)
+            #descent_dir = -self._grads_t
 
             linesearch_state = self._projected_gradient_linesearch.search(objective_and_update=_loss_and_update_fn,
                                                                           x0=self._input_var,
@@ -273,6 +298,32 @@ class LMA(object):
                          #lambda: tf.zeros_like(lmstate.dx))
         return input_var_update, dx_new
 
+    def _setupStochasticDiagEstimation(self):
+
+        if self._stochastic_diag_estimator_type == 'martens':
+            rands = tf.random.uniform(shape=[self._stochastic_diag_estimator_iters,
+                                             *self._preds_t.shape.as_list()],
+                                      minval=0, maxval=2, dtype=tf.int32)
+            rands = tf.cast(rands, dtype=tf.float32) * 2 - 1
+
+            hessian_t = self._diag_hessian_fn(self._preds_t)
+            stochastic_diag_fn = lambda v: self.vjp_fn(hessian_t ** 0.5 * v) ** 2
+            stochastic_diags = tf.map_fn(stochastic_diag_fn, rands)
+            mean_estimation = tf.reduce_mean(stochastic_diags, axis=0)
+            self._diag_mu_scaling_t = mean_estimation
+            self._diag_precond_t = mean_estimation
+        elif self._stochastic_diag_estimator_type == 'bekas':
+            rands = tf.random.uniform(shape=[self._stochastic_diag_estimator_iters,
+                                             *self._input_var.shape.as_list()],
+                                      minval=0, maxval=2, dtype=tf.int32)
+            rands = tf.cast(rands, dtype=tf.float32) * 2 - 1
+            stochastic_diag_fn = lambda v: v * self._jhjvp_fn(v, self._input_var)
+            stochastic_diags = tf.map_fn(stochastic_diag_fn, rands)
+            mean_estimation = tf.reduce_mean(stochastic_diags, axis=0)
+            self._diag_mu_scaling_t = mean_estimation
+            self._diag_precond_t = mean_estimation
+
+
 
     def minimize(self) -> tf.Operation:
         tf.logging.warning("The ftol, gtol, and xtol conditions are adapted from "
@@ -296,6 +347,7 @@ class LMA(object):
             grad_norm_regularization = 1.0
             if self._grad_norm_regularization_power != 0:
                 grad_norm_regularization = tf.linalg.norm(self._grads_t) ** self._grad_norm_regularization_power
+
 
             if self._diag_mu_scaling_t is not None:
                 diag_mu_scaling_this_iter = tf.where(self._diag_mu_scaling_t > self._diag_mu_max_values_t,
