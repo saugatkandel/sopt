@@ -163,12 +163,9 @@ class LMA(object):
                                                                        dtype=self._dtype),
                                                          name="diag_mu_max_values", trainable=False)
 
-        # Set up the second order calculations to define matrix-free linear ops.
-        self._setupSecondOrder()
 
-        # Set up stochastic GGN diagonal calculation
-        if self._stochastic_diag_estimator_type is not None:
-            self._setupStochasticDiagEstimation()
+
+        self._minimize_output_op = self._setupMinimizeOp()
 
         self._variables = [self._mu, self._update_var, self._dummy_var,
                            self._loss_before_update, self._iteration, self._total_cg_iterations,
@@ -308,7 +305,14 @@ class LMA(object):
 
             hessian_t = self._diag_hessian_fn(self._preds_t)
             stochastic_diag_fn = lambda v: self.vjp_fn(hessian_t ** 0.5 * v) ** 2
-            stochastic_diags = tf.map_fn(stochastic_diag_fn, rands)
+
+            #stochastic_diags = tf.map_fn(stochastic_diag_fn, rands)
+            stochastic_diags = []
+            rands_unstacked = tf.unstack(rands, axis=0)
+            for r in rands_unstacked:
+                sd = stochastic_diag_fn(r)
+                stochastic_diags.append(sd)
+
             mean_estimation = tf.reduce_mean(stochastic_diags, axis=0)
             self._diag_mu_scaling_t = mean_estimation
             self._diag_precond_t = mean_estimation
@@ -318,18 +322,32 @@ class LMA(object):
                                       minval=0, maxval=2, dtype=tf.int32)
             rands = tf.cast(rands, dtype=tf.float32) * 2 - 1
             stochastic_diag_fn = lambda v: v * self._jhjvp_fn(v, self._input_var)
-            stochastic_diags = tf.map_fn(stochastic_diag_fn, rands)
+            #stochastic_diags = tf.map_fn(stochastic_diag_fn, rands)
+            stochastic_diags = []
+            rands_unstacked = tf.unstack(rands, axis=0)
+            for r in rands_unstacked:
+                sd = stochastic_diag_fn(r)
+                stochastic_diags.append(sd)
             mean_estimation = tf.reduce_mean(stochastic_diags, axis=0)
             self._diag_mu_scaling_t = mean_estimation
             self._diag_precond_t = mean_estimation
 
 
+    def minimize(self):
+        return self._minimize_output_op
 
-    def minimize(self) -> tf.Operation:
+    def _setupMinimizeOp(self) -> tf.Operation:
         tf.logging.warning("The ftol, gtol, and xtol conditions are adapted from "
                            + "https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.least_squares.html."
                            + "This is a test version, and there is no guarantee that these work as intended.")
         with tf.name_scope(self._name + '_minimize_step'):
+
+            # Set up the second order calculations to define matrix-free linear ops.
+            self._setupSecondOrder()
+
+            # Set up stochastic GGN diagonal calculation
+            if self._stochastic_diag_estimator_type is not None:
+                self._setupStochasticDiagEstimation()
 
             print(self._loss_before_update, self._loss_t)
             store_loss_op = tf.assign(self._loss_before_update, self._loss_t,
