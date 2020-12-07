@@ -253,12 +253,12 @@ class LMA(object):
 
         def _linesearch():
             dx = projected_var - self._input_var
-            lhs = tf.reduce_sum(dx * self._grads_t)
-            rhs = 1e-8 * tf.linalg.norm(dx) ** 2.1
+            #lhs = tf.reduce_sum(dx * self._grads_t)
+            #rhs = 1e-8 * tf.linalg.norm(dx) ** 2.1
             #with tf.control_dependencies([tf.print('lhs', lhs, '-rhs', -rhs,
             #                                       'alpha', self._projected_gradient_linesearch._alpha)]):
-            descent_dir = tf.cond(lhs <= -rhs, lambda: dx, lambda: -self._grads_t)
-            #descent_dir = -self._grads_t
+            #descent_dir = tf.cond(lhs <= -rhs, lambda: dx, lambda: -self._grads_t)
+            descent_dir = -self._grads_t
 
             linesearch_state = self._projected_gradient_linesearch.search(objective_and_update=_loss_and_update_fn,
                                                                           x0=self._input_var,
@@ -349,7 +349,6 @@ class LMA(object):
             if self._stochastic_diag_estimator_type is not None:
                 self._setupStochasticDiagEstimation()
 
-            print(self._loss_before_update, self._loss_t)
             store_loss_op = tf.assign(self._loss_before_update, self._loss_t,
                                       name='store_loss_op')
 
