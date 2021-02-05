@@ -46,6 +46,7 @@ class LMA(object):
                  gtol: float = 1e-6,
                  min_reduction_ratio: float = 1e-4,
                  proj_min_reduction_ratio: float = None,
+                 apply_projected_lm_line_search: bool = False,
                  diag_hessian_fn: Callable[[tf.Tensor], tf.Tensor]= None,
                  diag_mu_scaling_t: tf.Tensor = None,  # Use  Marquardt-Fletcher scaling
                  diag_precond_t: tf.Tensor = None,  # Use preconditioning for CG steps
@@ -90,6 +91,7 @@ class LMA(object):
         self._min_reduction_ratio = min_reduction_ratio
 
         self._proj_min_reduction_ratio = proj_min_reduction_ratio
+        self._apply_projected_lm_line_search = apply_projected_lm_line_search
         if proj_min_reduction_ratio is None:
             # The logic here is that if the projection = 0.1 * dx0 (which is a reasonable low bound),
             # then the function value becomes approximately 0.01 * fn0.
@@ -152,8 +154,10 @@ class LMA(object):
                                                              trainable=False)
 
             self._projected_gradient_linesearch = AdaptiveLineSearch(name='proj_ls_linesearch', dtype=self._dtype)
+            self._projected_lm_linesearch = AdaptiveLineSearch(name='proj_lm_linsearch', dtype=self._dtype)
+            #self._projected_lm_alphas = tf.Variable([0., 0.], dtype='float32')
+            #self._projected_grad_alphas = tf.Variable([0., 0.], dtype='float32')
                                                                      #suff_decr=self._min_reduction_ratio)
-
             # This stores the maximum encountered values of the diagonal of the GN matrix.
             # This is based on the minpack implementation of the LM problem
             # For reference, see Section 2.2 here:
@@ -252,40 +256,107 @@ class LMA(object):
             return loss, update
 
         def _linesearch():
-            dx = projected_var - self._input_var
-            #lhs = tf.reduce_sum(dx * self._grads_t)
-            #rhs = 1e-8 * tf.linalg.norm(dx) ** 2.1
-            #with tf.control_dependencies([tf.print('lhs', lhs, '-rhs', -rhs,
-            #                                       'alpha', self._projected_gradient_linesearch._alpha)]):
-            #descent_dir = tf.cond(lhs <= -rhs, lambda: dx, lambda: -self._grads_t)
-            descent_dir = -self._grads_t
+            if self._apply_projected_lm_line_search:
+                dx = projected_var - self._input_var
+                lhs = tf.reduce_sum(dx * self._grads_t)
+                rhs = 1e-8 * tf.linalg.norm(dx) ** 2.1
+                linesearch_condition = (lhs <= -rhs)
 
-            linesearch_state = self._projected_gradient_linesearch.search(objective_and_update=_loss_and_update_fn,
-                                                                          x0=self._input_var,
-                                                                          descent_dir=descent_dir,  # -self._grads_t,
-                                                                          gradient=self._grads_t,
-                                                                          f0=self._loss_before_update)
-            counter_ops = [self._total_proj_ls_iterations.assign_add(linesearch_state.step_count),
-                          self._projected_gradient_iterations.assign_add(1)]
-            with tf.control_dependencies(counter_ops):#, tf.print(self._loss_before_update - linesearch_state.newf)]):
-                output = tf.identity(linesearch_state.newx)
+                def _true_fn():
+                    linesearch_state = self._projected_lm_linesearch.search(
+                        objective_and_update=_loss_and_update_fn,
+                        x0=self._input_var,
+                        descent_dir=dx,
+                        gradient=self._grads_t,
+                        f0=self._loss_before_update)
+                    counter_ops = [self._total_proj_ls_iterations.assign_add(linesearch_state.step_count),
+                                   self._projected_gradient_iterations.assign_add(1)]
+                    with tf.control_dependencies(counter_ops):
+                        output = tf.identity(linesearch_state.newx)
+                    return output
+
+                def _false_fn():
+                    linesearch_state = self._projected_gradient_linesearch.search(
+                        objective_and_update=_loss_and_update_fn,
+                        x0=self._input_var,
+                        descent_dir=-self._grads_t,
+                        gradient=self._grads_t,
+                        f0=self._loss_before_update)
+                    counter_ops = [self._total_proj_ls_iterations.assign_add(linesearch_state.step_count),
+                                   self._projected_gradient_iterations.assign_add(1)]
+                    with tf.control_dependencies(counter_ops):
+                        output = tf.identity(linesearch_state.newx)
+                    return output
+                output = tf.cond(linesearch_condition, _true_fn, _false_fn)
+            else:
+                linesearch_state = self._projected_gradient_linesearch.search(
+                    objective_and_update=_loss_and_update_fn,
+                    x0=self._input_var,
+                    descent_dir=-self._grads_t,
+                    gradient=self._grads_t,
+                    f0=self._loss_before_update)
+                counter_ops = [self._total_proj_ls_iterations.assign_add(linesearch_state.step_count),
+                               self._projected_gradient_iterations.assign_add(1)]
+                with tf.control_dependencies(counter_ops):
+                    output = tf.identity(linesearch_state.newx)
             return output
+            #
+            #
+            #
+            #
+            #
+            #
+            #
+            #         op1 = self._projected_gradient_linesearch._alpha.assign(self._projected_lm_alphas[0])
+            #         op2 = self._projected_gradient_linesearch._alpha_suggested.assign(self._projected_lm_alphas[1])
+            #         with tf.control_dependencies([op1, op2]):
+            #             ddir = tf.identity(dx)
+            #         return ddir
+            #     def _false_fn():
+            #         op1 = self._projected_gradient_linesearch._alpha.assign(self._projected_grad_alphas[0])
+            #         op2 = self._projected_gradient_linesearch._alpha_suggested.assign(self._projected_grad_alphas[1])
+            #         with tf.control_dependencies([op1, op2]):
+            #             ddir = -self._grads_t
+            #         return ddir
+            #
+            #
+            #     with tf.control_dependencies([tf.print('lhs', lhs, '-rhs', -rhs, 'condition', linesearch_condition,
+            #                                            'alpha', self._projected_gradient_linesearch._alpha,
+            #                                            'ls_alpha_suggested', self._projected_lm_alphas[1],
+            #                                            'grad_alpha_suggested', self._projected_grad_alphas[1])]):
+            #         descent_dir = tf.cond(linesearch_condition, _true_fn, _false_fn)
+            #         #descent_dir = tf.cond(lhs <= -rhs, lambda: dx, lambda: -self._grads_t)
+            # else:
+            #     descent_dir = -self._grads_t
+            #
+            # linesearch_state = self._projected_gradient_linesearch.search(objective_and_update=_loss_and_update_fn,
+            #                                                               x0=self._input_var,
+            #                                                               descent_dir=descent_dir,  # -self._grads_t,
+            #                                                               gradient=self._grads_t,
+            #                                                               f0=self._loss_before_update)
+            # counter_ops = [self._total_proj_ls_iterations.assign_add(linesearch_state.step_count),
+            #               self._projected_gradient_iterations.assign_add(1)]
+            # if self._apply_projected_lm_line_search:
+            #     def _ls_true_fn():
+            #         with tf.control_dependencies([tf.print('lalalalala')]):
+            #             op1 = self._projected_lm_alphas.assign([self._projected_gradient_linesearch._alpha,
+            #                                                     self._projected_gradient_linesearch._alpha_suggested])
+            #
+            #         return op1
+            #     def _ls_false_fn():
+            #         op1 = self._projected_grad_alphas.assign([self._projected_gradient_linesearch._alpha,
+            #                                                 self._projected_gradient_linesearch._alpha_suggested])
+            #         return op1
+            #     counter_ops.append(tf.cond(linesearch_condition, _ls_true_fn, _ls_false_fn))
+            #
+            # with tf.control_dependencies(counter_ops):#, tf.print(self._loss_before_update - linesearch_state.newf)]):
+            #     with tf.control_dependencies([tf.print('After assign, condition', linesearch_condition,
+            #                                            'alpha', self._projected_gradient_linesearch._alpha,
+            #                                            'ls_alpha_suggested', self._projected_lm_alphas[1],
+            #                                            'grad_alpha_suggested', self._projected_grad_alphas[1])]):
+            #         output = tf.identity(linesearch_state.newx)
+            # return output
 
-        #print_op = tf.print(  # 'loss_before_LM', self._loss_t,
-            #                    'loss_after_lm', loss_new,
-            #                    'reduction_ration', reduction_ratio,
-            # 'loss_after_lm', lmstate.loss,
-            # 'loss_after_constraint', projected_loss_new,
-        #    'loss_change', lmstate.actual_reduction,
-        #    'projection_reduction_ratio', projection_reduction_ratio,
-        #    'projection_condition', no_projection_condition,
-            #'test_condition', test_condition,
-            #'df0', df0,
-        #    'df1', projected_loss_change)
-        # 'test_ratio', projected_loss_new / (f0 + 1e-4 * df0 / tf.linalg.norm(dx)))
-        #                    'test_rhs', test_rhs, 'dist', dist)
-
-        #with tf.control_dependencies([print_op]):
         input_var_update = tf.cond(no_projection_condition,
                                        lambda: projected_var,
                                        _linesearch)
