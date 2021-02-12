@@ -214,13 +214,16 @@ class LMA(object):
         with tf.name_scope(self._name + '_gngvp'):
             self.vjp_fn = lambda x: tf.gradients(self._preds_t, self._input_var, x,
                                                  stop_gradients=[x], name="vjp")[0]
-            jvp_fn = lambda x: tf.gradients(self.vjp_fn(self._dummy_var), self._dummy_var, x, name='jvpz')[0]
+            self._loss_grads_t = tf.gradients(self._loss_t, self._preds_t)[0]
+            self._grads_t = self.vjp_fn(self._loss_grads_t)
+
+            #jvp_fn = lambda x: tf.gradients(self.vjp_fn(self._dummy_var), self._dummy_var, x, name='jvpz')[0]
+            jvp_fn = lambda x: tf.gradients(self._grads_t, self._loss_grads_t, x, name='jvpz')[0]
             self.jvp_fn = jvp_fn
             
             self._jhjvp_fn = lambda x, v_constant: self._setupHessianVectorProduct(jvp_fn, x, v_constant)
 
-            self._loss_grads_t = tf.gradients(self._loss_t, self._preds_t)[0]
-            self._grads_t = self.vjp_fn(self._loss_grads_t)
+
 
             #self._loss_grads_fn = lambda p: tf.gradients(self._loss_fn(p), p)[0]
             #self._grads_fn = lambda p: self.vjp_fn(self._loss_grads_fn(p))
