@@ -1,4 +1,8 @@
+This repository contains code associated with the paper:
+https://opg.optica.org/oe/viewmedia.cfm?uri=oe-29-15-23019&html=true
+
 # AD-based Second Order Optimization
+
 
 Tensorflow reverse-mode optimization routines that use a damped Generalized Gauss-Newton matrix. The methods included are:
 
