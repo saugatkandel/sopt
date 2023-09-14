@@ -1,5 +1,11 @@
-This repository contains code associated with the paper:
-https://opg.optica.org/oe/viewmedia.cfm?uri=oe-29-15-23019&html=true
+This repository contains a superset of the second order optimization code associtated with the paper:
+
+- [Efficient ptychographic phase retrieval via a matrix-free Levenberg-Marquardt algorithm](https://opg.optica.org/oe/viewmedia.cfm?uri=oe-29-15-23019&html=true)
+
+The code is generic so that it can be used in any desired optimization application. The ptychography specific application is available in https://github.com/saugatkandel/ptychoSampling
+
+
+
 
 # AD-based Second Order Optimization
 
