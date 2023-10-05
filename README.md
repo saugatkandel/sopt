@@ -18,6 +18,8 @@ Tensorflow reverse-mode optimization routines that use a damped Generalized Gaus
 4) Backtracking and adaptive linesearch methods
 5) An interface to the scipy optimizer class for gradient based or full Newton-type algorithms.
 
+Examples for all of these can be found in `sopt/tests/tensorflow2`(https://github.com/saugatkandel/sopt/tree/master/sopt/tests/tensorflow2)
+
 
 **Basics**:
 
